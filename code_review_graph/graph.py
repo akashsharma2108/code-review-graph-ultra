@@ -350,6 +350,20 @@ class GraphStore:
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
+    def get_edges_by_endpoint_key(self, key: str) -> list[GraphEdge]:
+        """Find HANDLES edges whose target is 'http:METHOD:path'.
+
+        Endpoint nodes are stored with qualified names like
+        'file.java::OrderController.GET /orders' while HANDLES edges store
+        targets as 'http:GET:/orders'. This method bridges that gap so BFS
+        traversal from an Endpoint node can reach the handler that serves it.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE target_qualified = ? AND kind = 'HANDLES'",
+            (key,),
+        ).fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
     def get_edges_by_config_key(self, key: str) -> list[GraphEdge]:
         """Find DEPENDS_ON_CONFIG edges whose target is 'config:{key}'.
 

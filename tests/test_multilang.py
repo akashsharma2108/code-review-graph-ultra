@@ -2759,6 +2759,60 @@ class TestConfigKeyNormalization:
         assert any("app.kafka" in t for t in targets)
 
 
+class TestEndpointBFSTraversal:
+    """traverse_graph from an Endpoint node should follow HANDLES edges to handler methods."""
+
+    def _build(self, tmp_path):
+        from code_review_graph.graph import GraphStore
+        from code_review_graph.incremental import full_build, get_db_path
+        import shutil
+
+        (tmp_path / ".git").mkdir()
+        shutil.copy(FIXTURES / "SampleJava.java", tmp_path / "SampleJava.java")
+        db_path = get_db_path(tmp_path)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        store = GraphStore(db_path)
+        full_build(tmp_path, store)
+        return store
+
+    def test_endpoint_node_exists_in_graph(self, tmp_path):
+        store = self._build(tmp_path)
+        cur = store._conn.cursor()
+        rows = cur.execute(
+            "SELECT name, qualified_name FROM nodes WHERE kind='Endpoint'"
+        ).fetchall()
+        names = {r[0] for r in rows}
+        assert "GET /orders" in names
+
+    def test_handles_edge_uses_http_prefix(self, tmp_path):
+        store = self._build(tmp_path)
+        cur = store._conn.cursor()
+        rows = cur.execute(
+            "SELECT target_qualified FROM edges WHERE kind='HANDLES'"
+        ).fetchall()
+        targets = {r[0] for r in rows}
+        assert "http:GET:/orders" in targets
+
+    def test_get_edges_by_endpoint_key_finds_handler(self, tmp_path):
+        store = self._build(tmp_path)
+        edges = store.get_edges_by_endpoint_key("http:GET:/orders")
+        assert len(edges) > 0
+        assert all(e.kind == "HANDLES" for e in edges)
+
+    def test_traverse_from_endpoint_reaches_handler_method(self, tmp_path):
+        from code_review_graph.tools.query import traverse_graph_func
+        self._build(tmp_path)
+        result = traverse_graph_func(
+            query="GET /orders",
+            depth=3,
+            repo_root=str(tmp_path),
+        )
+        names = {n["name"] for n in result.get("traversal", [])}
+        kinds = {n["kind"] for n in result.get("traversal", [])}
+        assert "Endpoint" in kinds
+        assert any("listOrders" in (n or "") for n in names)
+
+
 class TestConsumersOfPattern:
     """query_graph consumers_of and traverse_graph must resolve config→Java edges."""
 

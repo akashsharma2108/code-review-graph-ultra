@@ -666,6 +666,13 @@ def traverse_graph_func(
             if node.kind == "ConfigProperty":
                 in_edges = list(in_edges) + store.get_edges_by_config_key(node.name)
 
+            # Endpoint nodes: HANDLES edges store targets as 'http:METHOD:path'
+            # but nodes are stored as 'file.java::Class.METHOD path'.
+            # Bridge this so BFS from an Endpoint reaches the handler method.
+            if node.kind == "Endpoint":
+                http_key = "http:" + node.name.replace(" ", ":", 1)
+                in_edges = list(in_edges) + store.get_edges_by_endpoint_key(http_key)
+
             for e in out_edges:
                 tgt = e.target_qualified
                 # Resolve 'config:{key}' edge targets to the actual node qn
@@ -676,6 +683,17 @@ def traverse_graph_func(
                     for cn in config_nodes:
                         if cn.qualified_name not in visited:
                             queue.append((cn.qualified_name, cur_depth + 1))
+                    continue
+                # Resolve 'http:METHOD:path' edge targets to the actual Endpoint node qn
+                if tgt.startswith("http:"):
+                    parts = tgt.split(":", 2)
+                    if len(parts) == 3:
+                        ep_name = f"{parts[1]} {parts[2]}"
+                        candidates = store.search_nodes(ep_name, limit=3)
+                        ep_nodes = [c for c in candidates if c.kind == "Endpoint"]
+                        for ep in ep_nodes:
+                            if ep.qualified_name not in visited:
+                                queue.append((ep.qualified_name, cur_depth + 1))
                     continue
                 if tgt not in visited:
                     queue.append((tgt, cur_depth + 1))
