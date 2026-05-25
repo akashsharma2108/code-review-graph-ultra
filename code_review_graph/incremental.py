@@ -102,6 +102,16 @@ def _run_temporal_resolver(store: GraphStore) -> Optional[dict]:
         logger.warning("Temporal resolver failed: %s", exc)
         return None
 
+
+def _run_hcl_resolver(store: GraphStore) -> Optional[dict]:
+    """Run Terraform module-scope resolution without failing a build."""
+    try:
+        from .hcl_resolver import resolve_hcl_module_references
+        return resolve_hcl_module_references(store)
+    except Exception as exc:  # noqa: BLE001 - best-effort post-pass
+        logger.warning("Terraform/HCL resolver failed: %s", exc)
+        return None
+
 # Default ignore patterns (in addition to .gitignore).
 #
 # ``**/<dir>/**`` patterns are safe-anywhere directory exclusions.  A leading
@@ -964,6 +974,7 @@ def full_build(
     rescript_stats = _run_rescript_resolver(store)
     spring_stats = _run_spring_resolver(store)
     temporal_stats = _run_temporal_resolver(store)
+    hcl_stats = _run_hcl_resolver(store)
 
     return {
         "files_parsed": len(files),
@@ -973,6 +984,7 @@ def full_build(
         "rescript_resolution": rescript_stats,
         "spring_resolution": spring_stats,
         "temporal_resolution": temporal_stats,
+        "hcl_resolution": hcl_stats,
     }
 
 
@@ -1102,6 +1114,8 @@ def incremental_update(
     spring_changed = any(rp.endswith(".java") for rp in all_files)
     spring_stats = _run_spring_resolver(store) if spring_changed else None
     temporal_stats = _run_temporal_resolver(store) if spring_changed else None
+    hcl_changed = any(rp.endswith((".tf", ".hcl")) for rp in all_files)
+    hcl_stats = _run_hcl_resolver(store) if hcl_changed else None
 
     return {
         "files_updated": len(all_files),
@@ -1113,6 +1127,7 @@ def incremental_update(
         "rescript_resolution": rescript_stats,
         "spring_resolution": spring_stats,
         "temporal_resolution": temporal_stats,
+        "hcl_resolution": hcl_stats,
     }
 
 
