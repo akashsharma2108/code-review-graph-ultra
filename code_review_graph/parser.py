@@ -5496,13 +5496,16 @@ class CodeParser:
             if not segments:
                 return None
             
-            # Find crate root / source root by searching for Cargo.toml
+            # Find crate root / source root and collect all dependencies from Cargo.toml files found along the way
             crate_root = None
+            dependencies = {}
             current = caller_dir
             for _ in range(20):
-                if (current / "Cargo.toml").is_file():
-                    crate_root = current
-                    break
+                cargo_toml = current / "Cargo.toml"
+                if cargo_toml.is_file():
+                    if not crate_root:
+                        crate_root = current
+                    dependencies.update(self._find_rust_local_dependencies(cargo_toml))
                 if current.parent == current:
                     break
                 current = current.parent
@@ -5549,6 +5552,12 @@ class CodeParser:
             elif segments[0] == "self":
                 resolved_file = Path(file_path)
                 start_dir = resolved_file.parent
+                resolve_segments = segments[1:]
+            elif segments[0] in dependencies:
+                dep_path = dependencies[segments[0]]
+                dep_src_root = dep_path / "src" if (dep_path / "src").is_dir() else dep_path
+                start_dir = dep_src_root
+                resolved_file = dep_src_root / "lib.rs" if (dep_src_root / "lib.rs").is_file() else (dep_src_root / "main.rs" if (dep_src_root / "main.rs").is_file() else None)
                 resolve_segments = segments[1:]
             else:
                 start_dir = caller_dir
@@ -5601,6 +5610,27 @@ class CodeParser:
                 if cand.is_file():
                     return cand
         return None
+
+    def _find_rust_local_dependencies(self, cargo_toml_path: Path) -> dict[str, Path]:
+        deps = {}
+        if not cargo_toml_path.is_file():
+            return deps
+        try:
+            text = cargo_toml_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return deps
+        # Match name = { path = "..." }
+        pattern = re.compile(r'^([\w-]+)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"', re.MULTILINE)
+        for match in pattern.finditer(text):
+            name = match.group(1).strip()
+            path_val = match.group(2).strip()
+            try:
+                resolved_path = (cargo_toml_path.parent / path_val).resolve()
+                deps[name] = resolved_path
+                deps[name.replace("-", "_")] = resolved_path
+            except (OSError, ValueError):
+                pass
+        return deps
 
     def _find_dart_pubspec_root(
         self, start: Path, pkg_name: str,

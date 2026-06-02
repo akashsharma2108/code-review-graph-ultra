@@ -186,6 +186,37 @@ class TestRustImportResolution:
         assert len(imports) == 1
         assert imports[0].target == str((src / "lib.rs").resolve())
 
+    def test_resolves_rust_workspace_import(self, tmp_path):
+        # Create workspace root Cargo.toml
+        (tmp_path / "Cargo.toml").write_text(
+            "[workspace]\n"
+            "members = [\"crates/*\"]\n"
+            "[dependencies]\n"
+            "dep-crate = { path = \"./crates/dep_crate\" }\n"
+        )
+        
+        # Create dep_crate
+        dep_dir = tmp_path / "crates" / "dep_crate"
+        dep_dir.mkdir(parents=True)
+        (dep_dir / "Cargo.toml").write_text("[package]\nname = \"dep-crate\"\n")
+        dep_src = dep_dir / "src"
+        dep_src.mkdir()
+        (dep_src / "lib.rs").write_text("pub struct Helper;\n")
+        
+        # Create app_crate
+        app_dir = tmp_path / "crates" / "app_crate"
+        app_dir.mkdir(parents=True)
+        (app_dir / "Cargo.toml").write_text("[package]\nname = \"app_crate\"\n")
+        app_src = app_dir / "src"
+        app_src.mkdir()
+        (app_src / "main.rs").write_text("use dep_crate::Helper;\n")
+        
+        parser = CodeParser()
+        _, edges = parser.parse_file(app_src / "main.rs")
+        imports = [e for e in edges if e.kind == "IMPORTS_FROM"]
+        assert len(imports) == 1
+        assert imports[0].target == str((dep_src / "lib.rs").resolve())
+
 
 class TestJavaParsing:
     def setup_method(self):
