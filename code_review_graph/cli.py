@@ -7,6 +7,7 @@ Usage:
     code-review-graph update [--base BASE]
     code-review-graph watch
     code-review-graph status
+    code-review-graph doctor [--repo PATH]
     code-review-graph serve [--auto-watch] [--http] [--host ADDR] [--port PORT]
     code-review-graph mcp [--auto-watch]
     code-review-graph visualize
@@ -115,6 +116,7 @@ def _print_banner() -> None:
     {g}update{r}      Incremental update {d}(changed files only){r}
     {g}watch{r}       Auto-update on file changes
     {g}status{r}      Show graph statistics
+    {g}doctor{r}      Health checklist {d}(verify your install){r}
     {g}visualize{r}   Generate interactive HTML graph
     {g}wiki{r}        Generate markdown wiki from communities
     {g}detect-changes{r} Analyze change impact {d}(risk-scored review){r}
@@ -331,7 +333,8 @@ def _handle_init(args: argparse.Namespace) -> None:
     print()
     print("Next steps:")
     print("  1. code-review-graph build    # build the knowledge graph")
-    print("  2. Restart your AI coding tool to pick up the new config")
+    print("  2. code-review-graph doctor   # verify the install is healthy")
+    print("  3. Restart your AI coding tool to pick up the new config")
 
 
 def _handle_data_dir_option(args, repo_root: Path) -> None:
@@ -346,6 +349,17 @@ def _handle_data_dir_option(args, repo_root: Path) -> None:
         except Exception as exc:
             logging.error(f"Failed to set data directory: {exc}")
             sys.exit(1)
+
+
+def _handle_doctor(args: argparse.Namespace) -> None:
+    """Run the health checklist and exit non-zero on any critical failure."""
+    from .doctor import print_report, run_doctor
+    from .incremental import find_project_root
+
+    repo_root = Path(args.repo) if args.repo else find_project_root()
+    results, exit_code = run_doctor(repo_root)
+    print_report(results, repo_root=repo_root)
+    sys.exit(exit_code)
 
 
 def main() -> None:
@@ -606,6 +620,13 @@ def main() -> None:
 
     # repos
     sub.add_parser("repos", help="List registered repositories")
+
+    # doctor
+    doctor_cmd = sub.add_parser(
+        "doctor",
+        help="Run a health checklist and print next-step hints",
+    )
+    doctor_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
 
     # eval
     eval_cmd = sub.add_parser("eval", help="Run evaluation benchmarks")
@@ -870,6 +891,10 @@ def main() -> None:
 
     if args.command in ("init", "install"):
         _handle_init(args)
+        return
+
+    if args.command == "doctor":
+        _handle_doctor(args)
         return
 
     if args.command in ("register", "unregister", "repos"):

@@ -23,7 +23,8 @@ When using code-review-graph MCP tools, follow these rules:
   - `incremental.py` — Git-based change detection, file watching
   - `embeddings.py` — Optional vector embeddings (local sentence-transformers, OpenAI-compatible endpoints, Google Gemini, MiniMax)
   - `visualization.py` — D3.js interactive HTML graph generator
-  - `cli.py` — CLI entry point (install/init, build, update, postprocess, embed, watch, status, visualize, serve/mcp, wiki, detect-changes, register, unregister, repos, eval, daemon)
+  - `cli.py` — CLI entry point (install/init, build, update, postprocess, embed, watch, status, doctor, visualize, serve/mcp, wiki, detect-changes, register, unregister, repos, eval, daemon)
+  - `doctor.py` — Health checklist (`doctor` command): graph presence, freshness vs git HEAD, MCP config, server boot smoke, hooks, embeddings; surfaces the latest Token Savings number
   - `flows.py` — Execution flow detection and criticality scoring
   - `communities.py` — Community detection (Leiden algorithm or file-based grouping) and architecture overview
   - `search.py` — FTS5 hybrid search (keyword + vector)
@@ -55,6 +56,7 @@ uv run mypy code_review_graph/ --ignore-missing-imports --no-strict-optional
 uv run code-review-graph build              # Full graph build
 uv run code-review-graph update             # Incremental update
 uv run code-review-graph status             # Show stats
+uv run code-review-graph doctor             # Health checklist (verify the install)
 uv run code-review-graph serve              # Start MCP server
 uv run code-review-graph wiki               # Generate markdown wiki
 uv run code-review-graph detect-changes     # Risk-scored change analysis
@@ -102,6 +104,7 @@ uv run code-review-graph eval               # Run evaluation benchmarks
 - `tests/test_prompts.py` — MCP prompt template tests
 - `tests/test_wiki.py` — Wiki generation
 - `tests/test_context_savings.py` — Estimated context-savings metadata
+- `tests/test_doctor.py` — `doctor` health checklist (unbuilt flags, built healthy, exit codes)
 - `tests/test_skills.py` — Install/config generation and shipped skill metadata
 - `tests/test_registry.py` — Multi-repo registry
 - `tests/test_migrations.py` — Database migrations

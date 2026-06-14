@@ -315,6 +315,7 @@ code-review-graph embed --provider local       # Compute vector embeddings for s
 
 # Monitor and inspect
 code-review-graph status                       # Graph statistics
+code-review-graph doctor                       # Health checklist (✓/✗ + next-step hints)
 code-review-graph watch                        # Auto-update on file changes
 code-review-graph visualize                    # Generate interactive HTML graph
 code-review-graph visualize --format graphml   # Export GraphML
@@ -360,6 +361,32 @@ code-review-graph serve                        # Start MCP server (stdio)
 code-review-graph serve --http                 # Streamable HTTP on localhost:5555
 code-review-graph serve --tools query_graph_tool,detect_changes_tool  # Tool allowlist
 code-review-graph mcp                          # Alias for serve
+```
+
+### `doctor` — verify your install
+
+`code-review-graph doctor` runs a fast, read-only health checklist and prints a
+`✓`/`✗` line per check with an actionable next-step hint. It exits non-zero when a
+**critical** check fails (no graph, MCP server won't import) so it can gate CI and
+install scripts; warnings such as a stale graph or missing embeddings are surfaced
+but never fail the exit code.
+
+Checks:
+
+1. **graph** — `graph.db` exists and has nodes (critical → run `build`)
+2. **freshness** — stored `git_head_sha` vs current `HEAD` (warning → run `update`)
+3. **mcp-config** — at least one repo-local MCP config file present (warning → `install`)
+4. **serve-cmd** — the detected `serve` launcher resolves (`uvx`/`uv run`/python)
+5. **server** — `code_review_graph.main` imports and registers > 0 tools (critical)
+6. **hooks** — platform-native or git pre-commit hooks installed (warning → `install`)
+7. **embeddings** — present, or a note that semantic search falls back to keyword (FTS5)
+
+When a graph exists, the closing line surfaces the latest `detect-changes`
+Token Savings number as a "see your savings" proof.
+
+```bash
+code-review-graph doctor                       # check the current repo
+code-review-graph doctor --repo /path/to/repo  # check a specific repo
 ```
 
 ## Standalone Daemon CLI (`crg-daemon`)
