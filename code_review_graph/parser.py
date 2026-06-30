@@ -518,6 +518,11 @@ _KAFKA_PRODUCER_TYPES = frozenset({
     "KafkaSender",
 })
 
+# Spring Application Event annotations
+_SPRING_EVENT_LISTENER_ANNOTATIONS = frozenset({"EventListener"})
+# Spring publish methods
+_SPRING_PUBLISH_METHODS = frozenset({"publishEvent", "multicastEvent"})
+
 
 # ---------------------------------------------------------------------------
 # ReScript regex patterns and helpers (no tree-sitter grammar bundled)
@@ -4111,6 +4116,162 @@ class CodeParser:
                                     topics.append(raw)
         return topics
 
+    def _emit_event_listener_from_method(
+        self,
+        method_node,
+        method_name: str,
+        class_name: Optional[str],
+        file_path: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Emit HANDLES edge for @EventListener annotated methods.
+
+        Event type is inferred from:
+        1. @EventListener(OrderEvent.class) or @EventListener(classes = {A.class, B.class})
+        2. First method parameter type (when annotation has no args)
+        """
+        for child in method_node.children:
+            if child.type != "modifiers":
+                continue
+            for mod in child.children:
+                if mod.type not in ("annotation", "marker_annotation"):
+                    continue
+                ann_name: Optional[str] = None
+                for sub in mod.children:
+                    if sub.type == "identifier":
+                        ann_name = sub.text.decode("utf-8", errors="replace")
+                        break
+                if ann_name not in _SPRING_EVENT_LISTENER_ANNOTATIONS:
+                    continue
+
+                event_types: list[str] = []
+
+                # Try annotation arguments first
+                for arg_list in mod.children:
+                    if arg_list.type != "annotation_argument_list":
+                        continue
+                    for elem in arg_list.children:
+                        if elem.type == "class_literal":
+                            for typ in elem.children:
+                                if typ.type == "type_identifier":
+                                    event_types.append(
+                                        typ.text.decode("utf-8", errors="replace")
+                                    )
+                                    break
+                        elif elem.type == "element_value_pair":
+                            key_node = next(
+                                (c for c in elem.children if c.type == "identifier"), None
+                            )
+                            if key_node and key_node.text.decode("utf-8", errors="replace") in (
+                                "value", "classes"
+                            ):
+                                for val in elem.children:
+                                    if val.type == "class_literal":
+                                        for typ in val.children:
+                                            if typ.type == "type_identifier":
+                                                event_types.append(
+                                                    typ.text.decode("utf-8", errors="replace")
+                                                )
+                                                break
+                                    elif val.type in (
+                                        "array_initializer",
+                                        "element_value_array_initializer",
+                                    ):
+                                        for item in val.children:
+                                            if item.type == "class_literal":
+                                                for typ in item.children:
+                                                    if typ.type == "type_identifier":
+                                                        event_types.append(
+                                                            typ.text.decode(
+                                                                "utf-8", errors="replace"
+                                                            )
+                                                        )
+                                                        break
+
+                # Fall back to first method parameter type
+                if not event_types:
+                    for param_list in method_node.children:
+                        if param_list.type != "formal_parameters":
+                            continue
+                        for param in param_list.children:
+                            if param.type == "formal_parameter":
+                                for typ in param.children:
+                                    if typ.type == "type_identifier":
+                                        event_types.append(
+                                            typ.text.decode("utf-8", errors="replace")
+                                        )
+                                break
+                        break
+
+                qualified_source = self._qualify(method_name, file_path, class_name)
+                for event_type in event_types:
+                    edges.append(EdgeInfo(
+                        kind="HANDLES",
+                        source=qualified_source,
+                        target=f"event:{event_type}",
+                        file_path=file_path,
+                        line=method_node.start_point[0] + 1,
+                        extra={"event_type": event_type},
+                    ))
+
+    def _emit_publish_event_edges_from_method(
+        self,
+        method_node,
+        method_name: str,
+        class_name: Optional[str],
+        file_path: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Walk a method body and emit PUBLISHES edges for publishEvent() calls."""
+        body = next(
+            (c for c in method_node.children if c.type == "block"), None
+        )
+        if not body:
+            return
+        qualified_source = self._qualify(method_name, file_path, class_name)
+        self._walk_and_emit_publish_events(body, qualified_source, file_path, edges)
+
+    def _walk_and_emit_publish_events(
+        self,
+        node,
+        qualified_source: str,
+        file_path: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Recursively scan an AST subtree for publishEvent(new XxxEvent()) calls."""
+        if node.type == "method_invocation":
+            # For chained calls like `eventPublisher.publishEvent(...)` the
+            # children are [receiver_identifier, '.', method_identifier, argument_list].
+            # Take the last identifier before the argument_list — that is the
+            # actual method name, not the receiver.
+            ident_nodes = [c for c in node.children if c.type == "identifier"]
+            method_name_node = ident_nodes[-1] if ident_nodes else None
+            if method_name_node:
+                call_name = method_name_node.text.decode("utf-8", errors="replace")
+                if call_name in _SPRING_PUBLISH_METHODS:
+                    args = next(
+                        (c for c in node.children if c.type == "argument_list"), None
+                    )
+                    if args:
+                        for arg in args.children:
+                            if arg.type == "object_creation_expression":
+                                for typ in arg.children:
+                                    if typ.type == "type_identifier":
+                                        event_type = typ.text.decode(
+                                            "utf-8", errors="replace"
+                                        )
+                                        edges.append(EdgeInfo(
+                                            kind="PUBLISHES",
+                                            source=qualified_source,
+                                            target=f"event:{event_type}",
+                                            file_path=file_path,
+                                            line=node.start_point[0] + 1,
+                                            extra={"event_type": event_type},
+                                        ))
+                                        break
+        for child in node.children:
+            self._walk_and_emit_publish_events(child, qualified_source, file_path, edges)
+
     def _emit_kafka_edges_from_class(
         self,
         class_node,
@@ -4444,6 +4605,17 @@ class CodeParser:
                 self._emit_kafka_edges_from_method(
                     child, name, enclosing_class, file_path, edges,
                 )
+            if any(a.split("(")[0] in _SPRING_EVENT_LISTENER_ANNOTATIONS for a in deco_list):
+                method_extra["event_listener"] = True
+                self._emit_event_listener_from_method(
+                    child, name, enclosing_class, file_path, edges,
+                )
+
+        # Detect publishEvent() calls in any Java method body
+        if language == "java" and enclosing_class:
+            self._emit_publish_event_edges_from_method(
+                child, name, enclosing_class, file_path, edges,
+            )
 
         node = NodeInfo(
             kind=kind,

@@ -2041,6 +2041,46 @@ class TestNixParsing:
             )
 
 
+class TestSpringEventListenerParsing:
+    """Tests for Spring @EventListener / publishEvent() edge detection."""
+
+    def setup_method(self):
+        self.parser = CodeParser()
+        self.nodes, self.edges = self.parser.parse_file(FIXTURES / "SpringEvents.java")
+
+    def test_event_listener_inferred_from_parameter_emits_handles(self):
+        handles = [e for e in self.edges if e.kind == "HANDLES"]
+        targets = {e.target for e in handles}
+        assert "event:OrderPlacedEvent" in targets
+
+    def test_event_listener_explicit_annotation_arg_emits_handles(self):
+        handles = [e for e in self.edges if e.kind == "HANDLES"]
+        sources = {e.source for e in handles}
+        # AuditListener uses explicit @EventListener(OrderPlacedEvent.class)
+        assert any("AuditListener" in s or "auditOrder" in s for s in sources)
+
+    def test_publish_event_call_emits_publishes_edge(self):
+        publishes = [e for e in self.edges if e.kind == "PUBLISHES"]
+        assert publishes, "Expected at least one PUBLISHES edge"
+        targets = {e.target for e in publishes}
+        assert "event:OrderPlacedEvent" in targets
+
+    def test_publish_event_source_is_publishing_method(self):
+        publishes = [e for e in self.edges if e.kind == "PUBLISHES"]
+        sources = {e.source for e in publishes}
+        assert any("placeOrder" in s or "OrderService" in s for s in sources)
+
+    def test_handles_edge_stores_event_type_in_extra(self):
+        handles = [e for e in self.edges if e.kind == "HANDLES"]
+        event_types = {e.extra.get("event_type") for e in handles}
+        assert "OrderPlacedEvent" in event_types
+
+    def test_publishes_edge_stores_event_type_in_extra(self):
+        publishes = [e for e in self.edges if e.kind == "PUBLISHES"]
+        event_types = {e.extra.get("event_type") for e in publishes}
+        assert "OrderPlacedEvent" in event_types
+
+
 class TestSpringDIParsing:
     """Tests for Spring DI annotation detection and INJECTS edge generation."""
 
