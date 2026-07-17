@@ -645,6 +645,7 @@ def main() -> None:
     # build
     build_cmd = sub.add_parser("build", help="Full graph build (re-parse all files)")
     build_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    build_cmd.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
     build_cmd.add_argument(
         "--skip-flows",
         action="store_true",
@@ -666,6 +667,7 @@ def main() -> None:
     update_cmd = sub.add_parser("update", help="Incremental update (only changed files)")
     update_cmd.add_argument("--base", default="HEAD~1", help="Git diff base (default: HEAD~1)")
     update_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    update_cmd.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
     update_cmd.add_argument(
         "--skip-flows",
         action="store_true",
@@ -754,6 +756,13 @@ def main() -> None:
     # status
     status_cmd = sub.add_parser("status", help="Show graph statistics")
     status_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    status_cmd.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
+    status_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output one machine-readable JSON object",
+    )
     status_cmd.add_argument(
         "--data-dir",
         default=None,
@@ -1464,18 +1473,28 @@ def main() -> None:
             )
             from .tools.build import build_or_update_graph
 
-            result = build_or_update_graph(
-                full_rebuild=True,
-                repo_root=str(repo_root),
-                postprocess=pp,
-                **embedding_refresh_kwargs,
-            )
+            previous_disable = logging.root.manager.disable
+            if args.quiet:
+                logging.disable(logging.INFO)
+            try:
+                result = build_or_update_graph(
+                    full_rebuild=True,
+                    repo_root=str(repo_root),
+                    postprocess=pp,
+                    **embedding_refresh_kwargs,
+                )
+            finally:
+                logging.disable(previous_disable)
             parsed = result.get("files_parsed", 0)
             nodes = result.get("total_nodes", 0)
             edges = result.get("total_edges", 0)
-            print(f"Full build: {parsed} files, {nodes} nodes, {edges} edges (postprocess={pp})")
-            if result.get("errors"):
-                print(f"Errors: {len(result['errors'])}")
+            if not args.quiet:
+                print(
+                    f"Full build: {parsed} files, {nodes} nodes, {edges} edges "
+                    f"(postprocess={pp})"
+                )
+                if result.get("errors"):
+                    print(f"Errors: {len(result['errors'])}")
 
         elif args.command == "update":
             pp = (
@@ -1485,27 +1504,34 @@ def main() -> None:
             )
             from .tools.build import build_or_update_graph
 
-            result = build_or_update_graph(
-                full_rebuild=False,
-                repo_root=str(repo_root),
-                base=args.base,
-                postprocess=pp,
-                **embedding_refresh_kwargs,
-            )
+            previous_disable = logging.root.manager.disable
+            if args.quiet:
+                logging.disable(logging.INFO)
+            try:
+                result = build_or_update_graph(
+                    full_rebuild=False,
+                    repo_root=str(repo_root),
+                    base=args.base,
+                    postprocess=pp,
+                    **embedding_refresh_kwargs,
+                )
+            finally:
+                logging.disable(previous_disable)
             updated = result.get("files_updated", 0)
             nodes = result.get("total_nodes", 0)
             edges = result.get("total_edges", 0)
-            print(
-                f"Incremental: {updated} files updated, "
-                f"{nodes} nodes, {edges} edges"
-                f" (postprocess={pp})"
-            )
+            if not args.quiet:
+                print(
+                    f"Incremental: {updated} files updated, "
+                    f"{nodes} nodes, {edges} edges"
+                    f" (postprocess={pp})"
+                )
 
             # --brief: append a one-line change-impact summary with the same
             # estimated context-savings approximation that detect-changes uses.
             # Same baseline (changed files vs analysis response), so the two
             # commands are directly comparable.
-            if getattr(args, "brief", False):
+            if getattr(args, "brief", False) and not args.quiet:
                 from .changes import analyze_changes
                 from .context_savings import (
                     attach_context_savings,
@@ -1557,35 +1583,54 @@ def main() -> None:
 
         elif args.command == "status":
             stats = store.get_stats()
-            print(f"Nodes: {stats.total_nodes}")
-            print(f"Edges: {stats.total_edges}")
-            print(f"Files: {stats.files_count}")
-            print(f"Languages: {', '.join(stats.languages)}")
-            print(f"Last updated: {stats.last_updated or 'never'}")
-            # Show branch info and warn if stale
             stored_branch = store.get_metadata("git_branch")
             stored_sha = store.get_metadata("git_head_sha")
-            if stored_branch:
-                print(f"Built on branch: {stored_branch}")
-            if stored_sha:
-                print(f"Built at commit: {stored_sha[:12]}")
             from .incremental import _git_branch_info, detect_vcs
+
             vcs = detect_vcs(repo_root)
+            current_branch = None
+            current_sha = None
             if vcs == "git":
                 current_branch, current_sha = _git_branch_info(repo_root)
+            stored_svn_branch = store.get_metadata("svn_branch")
+            stored_rev = store.get_metadata("svn_revision")
+
+            if args.json_output:
+                print(json.dumps({
+                    "nodes": stats.total_nodes,
+                    "edges": stats.total_edges,
+                    "files": stats.files_count,
+                    "languages": list(stats.languages),
+                    "last_updated": stats.last_updated,
+                    "vcs": vcs,
+                    "built_on_branch": stored_branch,
+                    "built_at_commit": stored_sha,
+                    "current_branch": current_branch,
+                    "current_sha": current_sha,
+                    "svn_branch": stored_svn_branch,
+                    "svn_revision": stored_rev,
+                }))
+            elif not args.quiet:
+                print(f"Nodes: {stats.total_nodes}")
+                print(f"Edges: {stats.total_edges}")
+                print(f"Files: {stats.files_count}")
+                print(f"Languages: {', '.join(stats.languages)}")
+                print(f"Last updated: {stats.last_updated or 'never'}")
+                if stored_branch:
+                    print(f"Built on branch: {stored_branch}")
+                if stored_sha:
+                    print(f"Built at commit: {stored_sha[:12]}")
                 if stored_branch and current_branch and stored_branch != current_branch:
                     print(
                         f"WARNING: Graph was built on '{stored_branch}' "
                         f"but you are now on '{current_branch}'. "
                         f"Run 'code-review-graph build' to rebuild."
                     )
-            elif vcs == "svn":
-                stored_rev = store.get_metadata("svn_revision")
-                stored_svn_branch = store.get_metadata("svn_branch")
-                if stored_svn_branch:
-                    print(f"SVN branch: {stored_svn_branch}")
-                if stored_rev:
-                    print(f"SVN revision at build: {stored_rev}")
+                if vcs == "svn":
+                    if stored_svn_branch:
+                        print(f"SVN branch: {stored_svn_branch}")
+                    if stored_rev:
+                        print(f"SVN revision at build: {stored_rev}")
 
         elif args.command == "watch":
             from .postprocessing import run_post_processing
