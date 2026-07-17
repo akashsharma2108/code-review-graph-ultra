@@ -250,6 +250,7 @@ def query_graph_tool(
     target: str,
     repo_root: Optional[str] = None,
     detail_level: str = "standard",
+    max_results: int = 100,
 ) -> dict:
     """Run a predefined graph query to explore code relationships.
 
@@ -268,11 +269,12 @@ def query_graph_tool(
         target: Node name, qualified name, or file path to query.
         repo_root: Repository root path. Auto-detected if omitted.
         detail_level: "standard" for full output, "minimal" for compact summary. Default: standard.
+        max_results: Maximum results to return. Default: 100.
     """
     root = _resolve_repo_root(repo_root)
     return with_provenance(query_graph(
         pattern=pattern, target=target, repo_root=root,
-        detail_level=detail_level,
+        detail_level=detail_level, max_results=max_results,
     ), root)
 
 

@@ -13,6 +13,7 @@ import os
 import sqlite3
 import threading
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -338,10 +339,15 @@ class GraphStore:
         return self._row_to_node(row) if row else None
 
     def get_nodes_by_file(self, file_path: str) -> list[GraphNode]:
+        return list(self.iter_nodes_by_file(file_path))
+
+    def iter_nodes_by_file(self, file_path: str) -> Iterator[GraphNode]:
+        """Yield file nodes without first materializing the complete row set."""
         rows = self._conn.execute(
             "SELECT * FROM nodes WHERE file_path = ?", (file_path,)
-        ).fetchall()
-        return [self._row_to_node(r) for r in rows]
+        )
+        for row in rows:
+            yield self._row_to_node(row)
 
     def get_all_nodes(self, exclude_files: bool = True) -> list[GraphNode]:
         """Return all nodes, optionally excluding File nodes."""
@@ -354,16 +360,26 @@ class GraphStore:
         return [self._row_to_node(r) for r in rows]
 
     def get_edges_by_source(self, qualified_name: str) -> list[GraphEdge]:
+        return list(self.iter_edges_by_source(qualified_name))
+
+    def iter_edges_by_source(self, qualified_name: str) -> Iterator[GraphEdge]:
+        """Yield outgoing edges without first materializing the complete set."""
         rows = self._conn.execute(
             "SELECT * FROM edges WHERE source_qualified = ?", (qualified_name,)
-        ).fetchall()
-        return [self._row_to_edge(r) for r in rows]
+        )
+        for row in rows:
+            yield self._row_to_edge(row)
 
     def get_edges_by_target(self, qualified_name: str) -> list[GraphEdge]:
+        return list(self.iter_edges_by_target(qualified_name))
+
+    def iter_edges_by_target(self, qualified_name: str) -> Iterator[GraphEdge]:
+        """Yield incoming edges without first materializing the complete set."""
         rows = self._conn.execute(
             "SELECT * FROM edges WHERE target_qualified = ?", (qualified_name,)
-        ).fetchall()
-        return [self._row_to_edge(r) for r in rows]
+        )
+        for row in rows:
+            yield self._row_to_edge(row)
 
     def search_edges_by_target_name(self, name: str, kind: str = "CALLS") -> list[GraphEdge]:
         """Search for edges where target_qualified matches an unqualified name.
@@ -374,11 +390,18 @@ class GraphStore:
         reverse call tracing (callers_of) works even when qualified-name lookup
         returns nothing.
         """
+        return list(self.iter_edges_by_target_name(name, kind=kind))
+
+    def iter_edges_by_target_name(
+        self, name: str, kind: str = "CALLS",
+    ) -> Iterator[GraphEdge]:
+        """Yield exact bare-target edges without materializing all matches."""
         rows = self._conn.execute(
             "SELECT * FROM edges WHERE target_qualified = ? AND kind = ?",
             (name, kind),
-        ).fetchall()
-        return [self._row_to_edge(r) for r in rows]
+        )
+        for row in rows:
+            yield self._row_to_edge(row)
 
     def get_transitive_tests(
         self, qualified_name: str, max_depth: int = 1, max_frontier: int | None = None,
