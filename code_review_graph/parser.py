@@ -26,7 +26,7 @@ from typing import Any, NamedTuple, Optional
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # type: ignore[import-not-found,no-redef]
 
 from .config_keys import is_spring_config_path, normalize_spring_config_key
 from .custom_languages import CustomLanguage, load_custom_languages
@@ -3259,13 +3259,13 @@ class CodeParser:
                 scope = parent_scope()
                 qn = self._qualify(name, file_path, scope)
                 key = ((scope or "").casefold(), name.casefold())
-                node_index = member_nodes.get(key)
-                if node_index is None:
+                member_index = member_nodes.get(key)
+                if member_index is None:
                     is_test = _is_test_function(name, file_path)
                     extra = {"vbnet_kind": member_kind}
                     if type_params:
                         extra["vbnet_type_parameters"] = type_params
-                    node_index = len(nodes)
+                    member_index = len(nodes)
                     nodes.append(NodeInfo(
                         kind="Test" if is_test else "Function",
                         name=name,
@@ -3280,7 +3280,7 @@ class CodeParser:
                         is_test=is_test,
                         extra=extra,
                     ))
-                    member_nodes[key] = node_index
+                    member_nodes[key] = member_index
                     edges.append(EdgeInfo(
                         kind="CONTAINS",
                         source=container_qn(scope),
@@ -3289,7 +3289,7 @@ class CodeParser:
                         line=line_start,
                     ))
                 else:
-                    existing = nodes[node_index]
+                    existing = nodes[member_index]
                     overloads = existing.extra.setdefault(
                         "vbnet_overloads", [existing.params or ""],
                     )
@@ -3318,7 +3318,7 @@ class CodeParser:
                 ) and not modifier_words.intersection({"mustoverride", "declare"})
                 if has_body:
                     member_stack.append({
-                        "node_index": node_index,
+                        "node_index": member_index,
                         "qn": qn,
                     })
                 continue

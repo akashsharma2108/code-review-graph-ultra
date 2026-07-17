@@ -80,6 +80,7 @@ def resolve_hcl_module_references(store: GraphStore) -> dict[str, int]:
         except (OSError, RuntimeError, ValueError):
             continue
 
+        resolved: str | None
         if str(local_path) in hcl_files:
             resolved = str(local_path)
         else:

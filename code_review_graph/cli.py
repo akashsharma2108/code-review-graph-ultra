@@ -400,6 +400,8 @@ def _embedding_refresh_kwargs(args, parser) -> _EmbeddingRefreshKwargs:
         )
     if not provider:
         return {}
+    assert isinstance(provider, str)
+    assert isinstance(model, str)
     return {
         "embedding_provider": provider,
         "embedding_model": model,
