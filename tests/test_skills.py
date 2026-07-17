@@ -1196,7 +1196,8 @@ class TestInstallPlatformConfigs:
                 "gemini-cli": {**PLATFORMS["gemini-cli"], "detect": lambda: False},
             },
         ):
-            configured = install_platform_configs(tmp_path, target="all")
+            with patch("code_review_graph.skills.Path.home", return_value=tmp_path):
+                configured = install_platform_configs(tmp_path, target="all")
         assert "Codex" in configured
         assert "Claude Code" in configured
         assert "OpenCode" in configured
@@ -2216,7 +2217,8 @@ class TestInstallSkillsRespectTargetPlatform:
             no_instructions=True,
         )
         with patch("builtins.input", return_value="n"):
-            crg_cli._handle_init(args)
+            with patch("code_review_graph.skills.Path.home", return_value=tmp_path):
+                crg_cli._handle_init(args)
         return (tmp_path / ".claude" / "skills").is_dir()
 
     def test_cursor_install_does_not_create_claude_skills(self, tmp_path):
