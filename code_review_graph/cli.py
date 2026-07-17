@@ -649,6 +649,13 @@ def main() -> None:
     )
     detect_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
     detect_cmd.add_argument(
+        "--churn",
+        action="store_true",
+        help="Add an opt-in change-frequency term to risk scores. Counts "
+             "commits per file over 90 days by default; set "
+             "CRG_CHURN_WINDOW_DAYS to adjust.",
+    )
+    detect_cmd.add_argument(
         "--verify",
         action="store_true",
         help="Calibrate the estimated savings against tiktoken's "
@@ -1221,6 +1228,7 @@ def main() -> None:
                     changed,
                     repo_root=str(repo_root),
                     base=base,
+                    include_churn=getattr(args, "churn", False),
                 )
                 original_tokens = estimate_file_tokens(repo_root, changed)
                 attach_context_savings(
