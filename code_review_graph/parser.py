@@ -5146,6 +5146,16 @@ class CodeParser:
                     enclosing_class, enclosing_func,
                 )
 
+            # --- JS/TS static CommonJS and dynamic imports ---
+            # Treat only literal module specifiers as definite dependencies.
+            # Dynamic templates and path.join/path.resolve expressions are
+            # intentionally left unresolved rather than guessed.
+            if (
+                language in ("javascript", "typescript", "tsx")
+                and node_type == "call_expression"
+            ):
+                self._extract_js_module_call(child, file_path, language, edges)
+
             # --- JS/TS variable-assigned functions (const foo = () => {}) ---
             if (
                 language in ("javascript", "typescript", "tsx")
@@ -10449,6 +10459,12 @@ class CodeParser:
             if node_type in import_types:
                 self._collect_import_names(child, language, source, import_map)
 
+            if (
+                language in ("javascript", "typescript", "tsx")
+                and node_type in ("lexical_declaration", "variable_declaration")
+            ):
+                self._collect_js_require_names(child, import_map)
+
         if language == "julia":
             self._collect_julia_scoped_import_names(
                 root, source, import_map,
@@ -10701,6 +10717,100 @@ class CodeParser:
                                     part.text.decode("utf-8", errors="replace"),
                                 )
                                 break
+
+    @staticmethod
+    def _js_static_module_target(call_node) -> Optional[str]:
+        """Return a literal module target from ``require``/``import``.
+
+        Only direct calls with exactly one non-empty string (or a template
+        literal without substitutions) are accepted. Expressions such as
+        ``path.join(...)`` and interpolated templates are deliberately
+        ignored because reducing them to a path prefix creates false edges.
+        """
+        function = call_node.child_by_field_name("function")
+        if function is None:
+            function = next(iter(call_node.named_children), None)
+        if function is None:
+            return None
+        function_text = function.text.decode("utf-8", errors="replace")
+        if function_text not in ("require", "import"):
+            return None
+
+        arguments = call_node.child_by_field_name("arguments")
+        if arguments is None:
+            arguments = next(
+                (child for child in call_node.children if child.type == "arguments"),
+                None,
+            )
+        if arguments is None or len(arguments.named_children) != 1:
+            return None
+
+        argument = arguments.named_children[0]
+        raw = argument.text.decode("utf-8", errors="replace")
+        if argument.type == "string":
+            target = raw[1:-1] if len(raw) >= 2 else ""
+            return target or None
+        if argument.type == "template_string":
+            if any(child.type == "template_substitution" for child in argument.children):
+                return None
+            target = raw[1:-1] if len(raw) >= 2 else ""
+            return target or None
+        return None
+
+    def _extract_js_module_call(
+        self,
+        call_node,
+        file_path: str,
+        language: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Emit one file-level IMPORTS_FROM edge for a static module call."""
+        module = self._js_static_module_target(call_node)
+        if not module:
+            return
+        target = self._resolve_module_to_file(module, file_path, language) or module
+        if any(
+            edge.kind == "IMPORTS_FROM"
+            and edge.source == file_path
+            and edge.target == target
+            for edge in edges
+        ):
+            return
+        edges.append(EdgeInfo(
+            kind="IMPORTS_FROM",
+            source=file_path,
+            target=target,
+            file_path=file_path,
+            line=call_node.start_point[0] + 1,
+        ))
+
+    def _collect_js_require_names(
+        self,
+        declaration,
+        import_map: dict[str, str],
+    ) -> None:
+        """Collect direct and shorthand-destructured CommonJS bindings."""
+        for declarator in declaration.named_children:
+            if declarator.type != "variable_declarator":
+                continue
+            value = declarator.child_by_field_name("value")
+            if value is None or value.type != "call_expression":
+                continue
+            module = self._js_static_module_target(value)
+            if not module:
+                continue
+            name = declarator.child_by_field_name("name")
+            if name is None:
+                continue
+            if name.type == "identifier":
+                import_map[name.text.decode("utf-8", errors="replace")] = module
+                continue
+            if name.type != "object_pattern":
+                continue
+            for child in name.named_children:
+                if child.type == "shorthand_property_identifier_pattern":
+                    local_name = child.text.decode("utf-8", errors="replace")
+                    import_map[local_name] = module
 
     def _collect_import_names(
         self, node, language: str, source: bytes, import_map: dict[str, str],

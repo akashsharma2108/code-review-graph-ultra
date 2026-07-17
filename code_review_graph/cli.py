@@ -406,6 +406,117 @@ def _embedding_refresh_kwargs(args, parser) -> _EmbeddingRefreshKwargs:
     }
 
 
+def _non_negative_int(value: str) -> int:
+    """Parse a non-negative integer for bounded CLI output."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
+
+
+def _positive_int(value: str) -> int:
+    """Parse a positive integer for CLI limits."""
+    parsed = _non_negative_int(value)
+    if parsed == 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
+_GRAPH_TOOL_COMMANDS = {
+    "query",
+    "impact",
+    "search",
+    "flows",
+    "flow",
+    "communities",
+    "community",
+    "architecture",
+    "large-functions",
+    "refactor",
+}
+
+
+def _run_graph_tool_command(args, repo_root: Path) -> None:
+    """Run one graph-tool CLI wrapper and emit exactly one JSON value."""
+    from . import tools
+
+    root = str(repo_root)
+    if args.command == "query":
+        result = tools.query_graph(
+            pattern=args.pattern,
+            target=args.target,
+            repo_root=root,
+        )
+    elif args.command == "impact":
+        result = tools.get_impact_radius(
+            changed_files=args.files,
+            max_depth=args.depth,
+            max_results=args.max_results,
+            repo_root=root,
+            base=args.base,
+        )
+    elif args.command == "search":
+        result = tools.semantic_search_nodes(
+            query=args.query,
+            kind=args.kind,
+            limit=args.limit,
+            repo_root=root,
+        )
+    elif args.command == "flows":
+        result = tools.list_flows(
+            repo_root=root,
+            sort_by=args.sort,
+            limit=args.limit,
+            kind=args.kind,
+        )
+    elif args.command == "flow":
+        result = tools.get_flow(
+            flow_id=args.id,
+            flow_name=args.name,
+            include_source=args.source,
+            repo_root=root,
+        )
+    elif args.command == "communities":
+        result = tools.list_communities_func(
+            repo_root=root,
+            sort_by=args.sort,
+            min_size=args.min_size,
+        )
+    elif args.command == "community":
+        result = tools.get_community_func(
+            community_name=args.name,
+            community_id=args.id,
+            include_members=args.members,
+            repo_root=root,
+        )
+    elif args.command == "architecture":
+        result = tools.get_architecture_overview_func(
+            repo_root=root,
+            detail_level=args.detail_level,
+        )
+    elif args.command == "large-functions":
+        result = tools.find_large_functions(
+            min_lines=args.min_lines,
+            kind=args.kind,
+            file_path_pattern=args.path,
+            limit=args.limit,
+            repo_root=root,
+        )
+    else:
+        result = tools.refactor_func(
+            mode=args.mode,
+            old_name=args.old_name,
+            new_name=args.new_name,
+            kind=args.kind,
+            file_pattern=args.path,
+            repo_root=root,
+        )
+    print(json.dumps(result, indent=2, default=str))
+
+
 def main() -> None:
     """Main CLI entry point."""
     ap = argparse.ArgumentParser(
@@ -749,6 +860,148 @@ def main() -> None:
              "`pip install tiktoken`.",
     )
 
+    # enrich (Claude Code PreToolUse hook; reads one JSON object from stdin)
+    sub.add_parser("enrich", help="Enrich hook input with graph context")
+
+    # dead-code
+    dead_cmd = sub.add_parser(
+        "dead-code",
+        help="Find functions/classes with no callers or test references",
+    )
+    dead_cmd.add_argument(
+        "--kind",
+        choices=["Function", "Class"],
+        default=None,
+        help="Filter by node kind",
+    )
+    dead_cmd.add_argument(
+        "--file-pattern",
+        default=None,
+        help="Filter by file path substring",
+    )
+    dead_cmd.add_argument(
+        "--limit",
+        type=_non_negative_int,
+        default=0,
+        help="Maximum rows to print (0 = no limit)",
+    )
+    dead_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output a machine-readable JSON array",
+    )
+    dead_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    dead_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory containing the graph database",
+    )
+
+    # Graph tool wrappers
+    query_cmd = sub.add_parser("query", help="Query graph relationships")
+    query_cmd.add_argument(
+        "pattern",
+        choices=[
+            "callers_of",
+            "callees_of",
+            "imports_of",
+            "importers_of",
+            "children_of",
+            "tests_for",
+            "inheritors_of",
+            "file_summary",
+        ],
+    )
+    query_cmd.add_argument("target", help="Node name, qualified name, or file path")
+    query_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    impact_cmd = sub.add_parser("impact", help="Analyze the blast radius of changes")
+    impact_cmd.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help="Changed files (auto-detected when omitted)",
+    )
+    impact_cmd.add_argument("--depth", type=_non_negative_int, default=2)
+    impact_cmd.add_argument("--max-results", type=_positive_int, default=500)
+    impact_cmd.add_argument("--base", default="HEAD~1")
+    impact_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    search_cmd = sub.add_parser("search", help="Search graph entities")
+    search_cmd.add_argument("query", help="Search string")
+    search_cmd.add_argument(
+        "--kind",
+        choices=["File", "Class", "Function", "Type", "Test"],
+        default=None,
+    )
+    search_cmd.add_argument("--limit", type=_positive_int, default=20)
+    search_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    flows_cmd = sub.add_parser("flows", help="List stored execution flows")
+    flows_cmd.add_argument(
+        "--sort",
+        choices=["criticality", "depth", "node_count", "file_count", "name"],
+        default="criticality",
+    )
+    flows_cmd.add_argument("--limit", type=_positive_int, default=50)
+    flows_cmd.add_argument("--kind", default=None, help="Entry-point kind filter")
+    flows_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    flow_cmd = sub.add_parser("flow", help="Show one stored execution flow")
+    flow_selector = flow_cmd.add_mutually_exclusive_group(required=True)
+    flow_selector.add_argument("--id", type=_positive_int, default=None)
+    flow_selector.add_argument("--name", default=None)
+    flow_cmd.add_argument("--source", action="store_true", help="Include source snippets")
+    flow_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    communities_cmd = sub.add_parser("communities", help="List graph communities")
+    communities_cmd.add_argument(
+        "--sort",
+        choices=["size", "cohesion", "name"],
+        default="size",
+    )
+    communities_cmd.add_argument("--min-size", type=_non_negative_int, default=0)
+    communities_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    community_cmd = sub.add_parser("community", help="Show one graph community")
+    community_selector = community_cmd.add_mutually_exclusive_group(required=True)
+    community_selector.add_argument("--id", type=_positive_int, default=None)
+    community_selector.add_argument("--name", default=None)
+    community_cmd.add_argument("--members", action="store_true")
+    community_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    architecture_cmd = sub.add_parser("architecture", help="Show architecture overview")
+    architecture_cmd.add_argument(
+        "--detail-level",
+        choices=["minimal", "standard"],
+        default="minimal",
+    )
+    architecture_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    large_cmd = sub.add_parser("large-functions", help="Find oversized graph nodes")
+    large_cmd.add_argument("--min-lines", type=_positive_int, default=50)
+    large_cmd.add_argument(
+        "--kind",
+        choices=["Function", "Class", "File", "Test"],
+        default=None,
+    )
+    large_cmd.add_argument("--path", default=None, help="File-path substring filter")
+    large_cmd.add_argument("--limit", type=_positive_int, default=50)
+    large_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
+    refactor_cmd = sub.add_parser("refactor", help="Preview graph-backed refactors")
+    refactor_cmd.add_argument("mode", choices=["rename", "dead_code", "suggest"])
+    refactor_cmd.add_argument("--old-name", default=None)
+    refactor_cmd.add_argument("--new-name", default=None)
+    refactor_cmd.add_argument(
+        "--kind",
+        choices=["Function", "Class"],
+        default=None,
+    )
+    refactor_cmd.add_argument("--path", default=None, help="File-path substring filter")
+    refactor_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
     # serve / mcp
     serve_cmd = sub.add_parser(
         "serve",
@@ -879,6 +1132,34 @@ def main() -> None:
 
     if not args.command:
         _print_banner()
+        return
+
+    if (
+        args.command == "refactor"
+        and args.mode == "rename"
+        and (not args.old_name or not args.new_name)
+    ):
+        refactor_cmd.error("rename requires --old-name and --new-name")
+
+    if args.command == "enrich":
+        from .enrich import run_hook
+
+        run_hook()
+        return
+
+    if args.command in _GRAPH_TOOL_COMMANDS:
+        from .incremental import find_project_root, get_db_path
+
+        requested_root = Path(args.repo).expanduser() if args.repo else None
+        repo_root = find_project_root(requested_root)
+        db_path = get_db_path(repo_root)
+        if not db_path.exists():
+            print(
+                f"No graph found at {db_path}. Run `code-review-graph build` first.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        _run_graph_tool_command(args, repo_root)
         return
 
     embedding_refresh_kwargs = _embedding_refresh_kwargs(args, ap)
@@ -1123,19 +1404,59 @@ def main() -> None:
             )
             logging.error("Use 'build' for a full parse, or run 'git init' first.")
             sys.exit(1)
+    elif args.command == "dead-code":
+        requested_root = Path(args.repo).expanduser() if args.repo else None
+        repo_root = find_project_root(requested_root)
     else:
         repo_root = Path(args.repo) if args.repo else find_project_root()
 
     # Handle --data-dir for commands that support it
-    _data_dir_cmds = ("build", "update", "detect-changes", "status", "watch", "visualize", "wiki")
+    _data_dir_cmds = (
+        "build",
+        "update",
+        "detect-changes",
+        "status",
+        "watch",
+        "visualize",
+        "wiki",
+        "dead-code",
+    )
     if args.command in _data_dir_cmds:
         _handle_data_dir_option(args, repo_root)
 
     db_path = get_db_path(repo_root)
+    if args.command == "dead-code" and not db_path.exists():
+        print(
+            f"No graph found at {db_path}. Run `code-review-graph build` first.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     store = GraphStore(db_path)
 
     try:
-        if args.command == "build":
+        if args.command == "dead-code":
+            from .refactor import find_dead_code
+
+            items = find_dead_code(
+                store,
+                kind=args.kind,
+                file_pattern=args.file_pattern,
+                root=repo_root,
+            )
+            total = len(items)
+            shown = items[: args.limit] if args.limit else items
+            if args.json_output:
+                print(json.dumps(shown, indent=2))
+            else:
+                print(f"Dead code: {total} item(s); showing {len(shown)}")
+                for item in shown:
+                    kind = item.get("kind", "?")
+                    name = item.get("name", "?")
+                    file_path = item.get("relative_path") or item.get("file", "?")
+                    line = item.get("line", "?")
+                    print(f"  [{kind}] {name}  ({file_path}:{line})")
+
+        elif args.command == "build":
             pp = (
                 "none"
                 if getattr(args, "skip_postprocess", False)
