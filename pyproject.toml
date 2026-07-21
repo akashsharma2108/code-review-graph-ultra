@@ -12,6 +12,9 @@ requires-python = ">=3.10"
 authors = [
     { name = "Tirth" },
 ]
+maintainers = [
+    { name = "Akash Sharma", email = "akashsharma90099@gmail.com" },
+]
 keywords = ["code-review", "knowledge-graph", "tree-sitter", "mcp", "ai-coding-tools"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,9 +42,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://code-review-graph.com"
-Repository = "https://github.com/tirth8205/code-review-graph"
-Documentation = "https://github.com/tirth8205/code-review-graph/blob/main/docs/INDEX.md"
+Homepage = "https://github.com/akashsharma2108/code-review-graph-ultra"
+Repository = "https://github.com/akashsharma2108/code-review-graph-ultra"
+Documentation = "https://github.com/akashsharma2108/code-review-graph-ultra/blob/main/docs/INDEX.md"
+Upstream = "https://github.com/tirth8205/code-review-graph"
 Changelog = "https://github.com/tirth8205/code-review-graph/blob/main/CHANGELOG.md"
 Issues = "https://github.com/tirth8205/code-review-graph/issues"
 
