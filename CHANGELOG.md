@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Team Sync: an organization-scoped temporal SQLite service and authenticated
+  JSON API for portable developer, commit, symbol, decision, test, and agent-session
+  provenance. Clients use ordered event cursors and an offline cache.
+- Added eight MCP tools and a `code-review-graph team` CLI for server/token management,
+  checkout enrollment, commit and working-tree handoffs, Git-range backfill, filtered
+  context, activity, synchronization, and health status.
+- Added credential-stripped repository identities, central relative-path validation,
+  idempotent capsule updates, commit-author attribution, untracked-file capture without
+  source upload, and token revocation.
+- Added zero-touch Team Sync automation: secretless environment enrollment, durable
+  SQLite outbox and retry/backoff, coalesced worktree checkpoints, automatic Git
+  commit/merge/checkout/rewrite/push capture, CI range capture, and native lifecycle
+  integration for Codex, Claude-compatible agents, Cursor, Gemini CLI, and OpenCode.
+- Hardened the Team Sync service and client: concurrent request handling with
+  store-level serialization and per-connection timeouts (a stalled client no longer
+  blocks the API), outbox dead-lettering for permanently rejected or
+  retry-exhausted capsules, timestamp-free checkpoint payloads so unchanged trees
+  deduplicate server-side, literal matching for `%`/`_` in context filters, and an
+  explicit plaintext-HTTP warning when the server binds beyond localhost.
+
 ## [2.3.7] - 2026-07-18
 
 **Maintainer-reconciliation release.** This release packages the verified work

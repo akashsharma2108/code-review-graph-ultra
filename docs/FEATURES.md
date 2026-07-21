@@ -1,5 +1,14 @@
 # Features
 
+## Unreleased
+
+- **Team Sync**: a central organization-scoped temporal store, authenticated JSON API,
+  portable developer/agent work capsules, Git commit-range backfill, event cursors, and
+  offline caches. Eight MCP tools and the `code-review-graph team` CLI expose handoffs by
+  developer, symbol, commit, and time. Zero-touch Git/agent hooks add secretless
+  enrollment, a durable outbox, retries, and automatic edit/commit/pull/push capture.
+  See [TEAM_SYNC.md](TEAM_SYNC.md).
+
 ## v2.3.6 (Current)
 - **Framework-aware PHP parsing**: traits, enums, object creation, and base clauses are indexed; Composer PSR-4 resolution is longest-prefix, multi-directory, cached, and repository-bounded; Blade references ignore comments/escaped directives; Laravel Route and Eloquent edges require explicit framework/import/receiver evidence.
 - **Custom languages without forking**: drop a `.code-review-graph/languages.toml` into your repo to index any grammar shipped by tree-sitter-language-pack — extension map plus node-type lists, validated and capped, with built-in languages always winning. See [CUSTOM_LANGUAGES.md](CUSTOM_LANGUAGES.md).

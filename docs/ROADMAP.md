@@ -2,6 +2,16 @@
 
 ## Shipped
 
+### Unreleased
+- **Team Sync** central service and temporal schema for developer, commit, symbol,
+  decision, test, and agent-session provenance
+- **Eight Team Sync MCP tools** plus deploy, enroll, publish, Git-range import,
+  context, activity, sync, and status CLI workflows
+- **Portable and private-by-default records**: repository-relative paths, no source
+  contents, credential-stripped remotes, organization isolation, and offline caches
+- **Zero-touch automation** with Git and agent lifecycle hooks, environment enrollment,
+  durable coalescing outbox, fail-open retries, pull synchronization, and CI capture
+
 ### v2.3.6
 - **Custom languages without forking**: `.code-review-graph/languages.toml` maps extensions and node types to any tree-sitter-language-pack grammar (`docs/CUSTOM_LANGUAGES.md`)
 - **GitHub Action** for risk-scored PR review comments: graph built/restored on the CI runner, sticky comment upserted per push, optional `fail-on-risk` merge gate; dogfooded via `.github/workflows/pr-review.yml` (`docs/GITHUB_ACTION.md`)

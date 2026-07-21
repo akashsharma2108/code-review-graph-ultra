@@ -785,7 +785,7 @@ def _remove_instruction(
         )
 
 
-def _resolve_git_hook(repo_root: Path) -> Path:
+def _resolve_git_hook(repo_root: Path, hook_name: str = "pre-commit") -> Path:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--git-path", "hooks"],
@@ -799,8 +799,8 @@ def _resolve_git_hook(repo_root: Path) -> Path:
     except (OSError, subprocess.TimeoutExpired):
         result = None
     if result is not None and result.returncode == 0 and result.stdout.strip():
-        return repo_root / result.stdout.strip() / "pre-commit"
-    return repo_root / ".git" / "hooks" / "pre-commit"
+        return repo_root / result.stdout.strip() / hook_name
+    return repo_root / ".git" / "hooks" / hook_name
 
 
 def _remove_git_hook(
@@ -809,46 +809,90 @@ def _remove_git_hook(
     *,
     dry_run: bool,
 ) -> None:
-    path = _resolve_git_hook(repo_root)
-    if not path.exists() or not _safe_path(path, repo_root, report):
-        return
-    raw = _read_text(path, report)
-    if raw is None or _GIT_HOOK_MARKER not in raw:
-        return
-    lines = raw.splitlines(keepends=True)
-    rewritten: list[str] = []
-    dropping = False
-    for line in lines:
-        if _GIT_HOOK_MARKER in line:
-            dropping = True
+    hook_names = (
+        "pre-commit", "post-commit", "post-merge", "post-checkout", "post-rewrite", "pre-push",
+    )
+    for hook_name in hook_names:
+        path = _resolve_git_hook(repo_root, hook_name)
+        if not path.exists() or not _safe_path(path, repo_root, report):
             continue
-        if dropping:
-            if line.strip() == "fi":
-                dropping = False
+        raw = _read_text(path, report)
+        if raw is None:
             continue
-        rewritten.append(line)
-    new_text = "".join(rewritten).rstrip() + "\n"
-    meaningful = [
-        line
-        for line in new_text.splitlines()
-        if line.strip() and not line.strip().startswith("#!")
-    ]
-    if meaningful:
-        _write_text(
-            path,
-            new_text,
-            report,
-            detail="removed code-review-graph hook block",
-            dry_run=dry_run,
-        )
-    else:
-        _remove_file(
-            path,
-            repo_root,
-            report,
-            dry_run=dry_run,
-            detail="remove hook containing only code-review-graph",
-        )
+        sidecar = path.with_name(path.name + skills._GIT_WRAPPED_SUFFIX)
+        if skills._GIT_WRAPPER_MARKER in raw and sidecar.exists():
+            if not _safe_path(sidecar, repo_root, report):
+                continue
+            original = _read_text(sidecar, report)
+            if original is None:
+                continue
+            original_mode = stat.S_IMODE(sidecar.stat().st_mode)
+            _write_text(
+                path,
+                original,
+                report,
+                detail="restored original non-shell git hook",
+                dry_run=dry_run,
+            )
+            if not dry_run:
+                try:
+                    path.chmod(original_mode)
+                except OSError as exc:
+                    report.errors.append(f"{path}: chmod failed ({exc})")
+            _remove_file(
+                sidecar,
+                repo_root,
+                report,
+                dry_run=dry_run,
+                detail="remove preserved hook sidecar",
+            )
+            continue
+        has_legacy = hook_name == "pre-commit" and _GIT_HOOK_MARKER in raw
+        has_zero_touch = f"# >>> code-review-graph zero-touch ({hook_name}) >>>" in raw
+        if not has_legacy and not has_zero_touch:
+            continue
+        lines = raw.splitlines(keepends=True)
+        rewritten: list[str] = []
+        dropping_legacy = False
+        dropping_zero_touch = False
+        for line in lines:
+            if f"# >>> code-review-graph zero-touch ({hook_name}) >>>" in line:
+                dropping_zero_touch = True
+                continue
+            if dropping_zero_touch:
+                if "# <<< code-review-graph zero-touch <<<" in line:
+                    dropping_zero_touch = False
+                continue
+            if has_legacy and _GIT_HOOK_MARKER in line:
+                dropping_legacy = True
+                continue
+            if dropping_legacy:
+                if line.strip() == "fi":
+                    dropping_legacy = False
+                continue
+            rewritten.append(line)
+        new_text = "".join(rewritten).rstrip() + "\n"
+        meaningful = [
+            line
+            for line in new_text.splitlines()
+            if line.strip() and not line.strip().startswith("#!")
+        ]
+        if meaningful:
+            _write_text(
+                path,
+                new_text,
+                report,
+                detail="removed code-review-graph hook blocks",
+                dry_run=dry_run,
+            )
+        else:
+            _remove_file(
+                path,
+                repo_root,
+                report,
+                dry_run=dry_run,
+                detail="remove hook containing only code-review-graph",
+            )
 
 
 def _remove_gitignore(
@@ -1018,25 +1062,30 @@ def _process_repo(
         else:
             _remove_file(path, repo_root, report, dry_run=dry_run)
 
-    hook_commands = _commands(skills.generate_hooks_config(repo_root))
-    hook_commands.update(_legacy_repo_hook_commands(repo_root))
+    legacy_hook_commands = _legacy_repo_hook_commands(repo_root)
+    claude_hook_commands = _commands(skills.generate_hooks_config(repo_root, "claude"))
+    claude_hook_commands.update(legacy_hook_commands)
     _remove_hooks(
         repo_root / ".claude" / "settings.json",
-        hook_commands,
+        claude_hook_commands,
         repo_root,
         report,
         dry_run=dry_run,
     )
+    qoder_hook_commands = _commands(skills.generate_hooks_config(repo_root, "qoder"))
+    qoder_hook_commands.update(legacy_hook_commands)
     _remove_hooks(
         repo_root / ".qoder" / "settings.json",
-        hook_commands,
+        qoder_hook_commands,
         repo_root,
         report,
         dry_run=dry_run,
     )
+    codebuddy_hook_commands = _commands(skills.generate_hooks_config(repo_root, "codebuddy"))
+    codebuddy_hook_commands.update(legacy_hook_commands)
     _remove_hooks(
         repo_root / ".codebuddy" / "settings.json",
-        hook_commands,
+        codebuddy_hook_commands,
         repo_root,
         report,
         dry_run=dry_run,

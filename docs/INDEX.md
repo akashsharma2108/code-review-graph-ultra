@@ -3,8 +3,10 @@
 - [USAGE.md](USAGE.md) -- How to install and use
 - [FAQ.md](FAQ.md) -- How it compares to LSP, RAG, grep, and similar tools; when not to use it
 - [FEATURES.md](FEATURES.md) -- What's included, changelog
-- [COMMANDS.md](COMMANDS.md) -- All 30 MCP tools, 5 MCP prompts, skills, and CLI commands
+- [COMMANDS.md](COMMANDS.md) -- All 38 MCP tools, 5 MCP prompts, skills, and CLI commands
 - [GITHUB_ACTION.md](GITHUB_ACTION.md) -- Risk-scored PR review comments via GitHub Actions
+- [TEAM_SYNC.md](TEAM_SYNC.md) -- Shared developer/agent handoffs, deployment, CLI, MCP tools, and API
+- [TEAM_SYNC_VALIDATION.md](TEAM_SYNC_VALIDATION.md) -- Multi-developer test matrix, risks, and rollout checklist
 - [CUSTOM_LANGUAGES.md](CUSTOM_LANGUAGES.md) -- Bring your own language via `.code-review-graph/languages.toml`
 - [LLM-OPTIMIZED-REFERENCE.md](LLM-OPTIMIZED-REFERENCE.md) -- Token-optimized reference for MCP-capable AI coding agents
 - [architecture.md](architecture.md) -- System design and data flow

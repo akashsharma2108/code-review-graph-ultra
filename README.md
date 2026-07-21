@@ -304,6 +304,7 @@ The benchmark also runs an honest **co-change mode**: the predictor is seeded wi
 | **Wiki generation** | Auto-generate markdown wiki from community structure |
 | **Multi-repo registry** | Register multiple repos, search across all of them |
 | **Multi-repo daemon** | `crg-daemon` watches multiple repos as child processes, with health checks and auto-restart |
+| **Team Sync** | Central, organization-scoped developer/agent handoffs with commit history, symbol provenance, decisions, tests, and an offline cache |
 | **MCP prompts** | 5 workflow templates: review, architecture, debug, onboard, pre-merge |
 | **Full-text search** | FTS5-powered hybrid search combining keyword and vector similarity |
 | **Local storage** | SQLite file in `.code-review-graph/`. Core graph storage needs no external database or cloud service. |
@@ -353,6 +354,11 @@ code-review-graph repos            # List registered repositories
 code-review-graph daemon start     # Start multi-repo watch daemon
 code-review-graph daemon stop      # Stop the daemon
 code-review-graph daemon status    # Show daemon status and repos
+code-review-graph team init --server <url> --token <token>  # Join Team Sync
+code-review-graph team auto --event flush  # Retry the zero-touch durable outbox
+code-review-graph team publish --commit HEAD  # Publish an agent-aware handoff
+code-review-graph team import --range 'main~10..main'  # Backfill Git history
+code-review-graph team context --symbol 'src/auth.py::login'  # Retrieve shared intent
 code-review-graph eval             # Run evaluation benchmarks
 code-review-graph serve            # Start MCP server
 ```
@@ -360,6 +366,9 @@ code-review-graph serve            # Start MCP server
 JSON exports stay inside the local graph data directory, which Git ignores by
 default. They can contain absolute paths and code-structure metadata, so inspect
 and sanitize an export before publishing it outside your machine.
+
+See [Team Sync](docs/TEAM_SYNC.md) for zero-touch Git/agent automation, durable offline
+delivery, central service deployment, privacy, CI/backfill, and the HTTP API.
 
 </details>
 
@@ -445,7 +454,7 @@ full config reference and all available options.
 </details>
 
 <details>
-<summary><strong>30 MCP tools</strong></summary>
+<summary><strong>38 MCP tools</strong></summary>
 <br>
 
 Your AI assistant uses these automatically once the graph is built.
@@ -482,6 +491,14 @@ Your AI assistant uses these automatically once the graph is built.
 | `get_wiki_page_tool` | Retrieve a specific wiki page |
 | `list_repos_tool` | List registered repositories |
 | `cross_repo_search_tool` | Search across all registered repositories |
+| `publish_work_capsule_tool` | Publish a commit or uncommitted agent handoff |
+| `publish_commit_range_tool` | Backfill an oldest-first Git revision range |
+| `sync_team_context_tool` | Refresh the local offline Team Sync cache |
+| `get_team_context_tool` | Query shared work by developer, symbol, commit, or time |
+| `get_developer_context_tool` | Explain what one developer and their agents built |
+| `get_symbol_history_tool` | Retrieve cross-developer history for a symbol or file |
+| `list_team_activity_tool` | List recent capsules and activity by developer |
+| `team_sync_status_tool` | Check central connectivity and local event cursor |
 
 **MCP Prompts** (5 workflow templates):
 `review_changes`, `architecture_map`, `debug_issue`, `onboard_developer`, `pre_merge_check`
@@ -532,6 +549,13 @@ pip install "code-review-graph[all]"                 # All optional dependencies
 | `CRG_TOOL_TIMEOUT` | Optional timeout in seconds for bounded MCP tools (`0` disables timeout) | `0` |
 | `CRG_RECURSE_SUBMODULES` | Include git submodules in file collection when set to `1`, `true`, or `yes` | - |
 | `CRG_TOOLS` | Comma-separated allowlist of MCP tools to expose when serving | - |
+| `CRG_TEAM_SERVER` | Team Sync API URL; overrides checkout configuration | - |
+| `CRG_TEAM_TOKEN` | Team Sync bearer token; overrides checkout configuration | - |
+| `CRG_TEAM_REPOSITORY` | Stable Team Sync repository key, useful in CI | - |
+| `CRG_TEAM_DEVELOPER` | Team Sync developer ID override, useful in CI | - |
+| `CRG_AGENT_NAME` | Agent/client label recorded in published work capsules | - |
+| `CRG_TEAM_AUTO_TIMEOUT` | Per-request timeout for fail-open hooks (seconds, bounded 0.25–15) | `3` |
+| `CRG_TEAM_CHECKPOINT_SECONDS` | Minimum interval between automatic worktree sends; newest state remains queued | `60` |
 | `GOOGLE_API_KEY` | API key for Google Gemini embeddings | - |
 | `MINIMAX_API_KEY` | API key for MiniMax embeddings | - |
 | `CRG_OPENAI_BASE_URL` | OpenAI-compatible embeddings endpoint | - |
@@ -578,7 +602,7 @@ The cloud-egress warning is auto-skipped when the base URL points to localhost
 
 #### Tool Filtering
 
-CRG exposes 30 MCP tools by default. In token-constrained environments, you can
+CRG exposes 38 MCP tools by default. In token-constrained environments, you can
 limit the server to a subset of tools using `--tools` or the `CRG_TOOLS`
 environment variable:
 

@@ -1,6 +1,6 @@
 """MCP tool definitions for the Code Review Graph server.
 
-Exposes 27 tools:
+Exposes 36 tool implementations:
 1. build_or_update_graph  - full or incremental build
 2. get_impact_radius      - blast radius from changed files
 3. query_graph            - predefined graph queries
@@ -29,6 +29,14 @@ Exposes 27 tools:
 26. get_surprising_connections - find unexpected architectural coupling
 27. get_suggested_questions - auto-generated review questions from graph analysis
 28. traverse_graph        - BFS/DFS traversal from best-matching node
+29. publish_work_capsule  - publish commit or working-tree handoff context
+30. publish_commit_range  - backfill Git history into shared context
+31. sync_team_context     - refresh the offline shared-context cache
+32. get_team_context      - query handoffs by developer, symbol, commit, or time
+33. get_developer_context - explain work performed by one developer and their agents
+34. get_symbol_history    - retrieve cross-developer history for a symbol
+35. list_team_activity    - list recent team work and developer activity
+36. team_status           - report server connectivity and cache cursor
 """
 
 from __future__ import annotations
@@ -103,6 +111,18 @@ from .review import (
     get_review_context,
 )
 
+# -- team_tools -------------------------------------------------------------
+from .team_tools import (
+    get_developer_context_func,
+    get_symbol_history_func,
+    get_team_context_func,
+    list_team_activity_func,
+    publish_commit_range_func,
+    publish_work_capsule_func,
+    sync_team_context_func,
+    team_status_func,
+)
+
 __all__ = [
     # _common
     "_BUILTIN_CALL_NAMES",
@@ -143,6 +163,15 @@ __all__ = [
     "detect_changes_func",
     "get_affected_flows_func",
     "get_review_context",
+    # team_tools
+    "get_developer_context_func",
+    "get_symbol_history_func",
+    "get_team_context_func",
+    "list_team_activity_func",
+    "publish_commit_range_func",
+    "publish_work_capsule_func",
+    "sync_team_context_func",
+    "team_status_func",
     # analysis_tools
     "get_bridge_nodes_func",
     "get_hub_nodes_func",

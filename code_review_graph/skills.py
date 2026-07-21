@@ -12,14 +12,19 @@ import json
 import logging
 import os
 import platform
+import shlex
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_GIT_WRAPPER_MARKER = "# Wrapped by code-review-graph to preserve a non-shell hook."
+_GIT_WRAPPED_SUFFIX = ".crg-original"
 
 
 # --- Multi-platform MCP install ---
@@ -714,7 +719,7 @@ def generate_skills(repo_root: Path, skills_dir: Path | None = None) -> Path:
     return skills_dir
 
 
-def generate_hooks_config(repo_root: Path) -> dict[str, Any]:
+def generate_hooks_config(repo_root: Path, agent_name: str = "claude") -> dict[str, Any]:
     """Generate Claude Code hooks configuration.
 
     Hooks use the v1.x+ schema: each entry needs a ``matcher`` and a nested
@@ -728,6 +733,7 @@ def generate_hooks_config(repo_root: Path) -> dict[str, Any]:
     A PATH guard ensures the hook exits silently when the binary is not on
     ``$PATH`` (e.g. installed in a project venv).
     """
+    agent_arg = shlex.quote(agent_name.strip() or "claude")
     return {
         "hooks": {
             "PostToolUse": [
@@ -742,7 +748,12 @@ def generate_hooks_config(repo_root: Path) -> dict[str, Any]:
                                 "git rev-parse --git-dir >/dev/null 2>&1"
                                 " && code-review-graph update --skip-flows"
                                 " --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\""
-                                " || true"
+                                " || true; "
+                                "git rev-parse --git-dir >/dev/null 2>&1"
+                                " && code-review-graph team auto --event change"
+                                f" --agent {agent_arg}"
+                                " --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\""
+                                " >/dev/null 2>&1 || true"
                             ),
                             "timeout": 30,
                         },
@@ -761,7 +772,12 @@ def generate_hooks_config(repo_root: Path) -> dict[str, Any]:
                                 "git rev-parse --git-dir >/dev/null 2>&1"
                                 " && code-review-graph status"
                                 " --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\""
-                                " || echo 'Not a git repo, skipping'"
+                                " || echo 'Not a git repo, skipping'; "
+                                "git rev-parse --git-dir >/dev/null 2>&1"
+                                " && code-review-graph team auto --event session-start"
+                                f" --agent {agent_arg}"
+                                " --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\""
+                                " >/dev/null 2>&1 || true"
                             ),
                             "timeout": 10,
                         },
@@ -786,7 +802,11 @@ def generate_codex_hooks_config(repo_root: Path) -> dict[str, Any]:
                                 "cat >/dev/null || true; "
                                 "git rev-parse --git-dir >/dev/null 2>&1"
                                 " && code-review-graph update --skip-flows"
-                                " || true"
+                                " || true; "
+                                "git rev-parse --git-dir >/dev/null 2>&1"
+                                " && code-review-graph team auto --event change"
+                                " --agent codex"
+                                " >/dev/null 2>&1 || true"
                             ),
                             "timeout": 30,
                             "statusMessage": "Updating code-review-graph",
@@ -804,7 +824,11 @@ def generate_codex_hooks_config(repo_root: Path) -> dict[str, Any]:
                                 "cat >/dev/null || true; "
                                 "git rev-parse --git-dir >/dev/null 2>&1"
                                 " && code-review-graph status"
-                                " || echo 'Not a git repo, skipping'"
+                                " || echo 'Not a git repo, skipping'; "
+                                "git rev-parse --git-dir >/dev/null 2>&1"
+                                " && code-review-graph team auto --event session-start"
+                                " --agent codex"
+                                " >/dev/null 2>&1 || true"
                             ),
                             "timeout": 10,
                             "statusMessage": "Checking code-review-graph status",
@@ -817,7 +841,7 @@ def generate_codex_hooks_config(repo_root: Path) -> dict[str, Any]:
 
 
 def install_git_hook(repo_root: Path) -> Path | None:
-    """Install a git pre-commit hook that prints a risk summary before each commit.
+    """Install fail-open graph and Team Sync hooks across the Git lifecycle.
 
     Called automatically by ``code-review-graph install``.
     The hooks directory is resolved via ``git rev-parse --git-path hooks`` so
@@ -827,21 +851,18 @@ def install_git_hook(repo_root: Path) -> Path | None:
     own hook manager (husky, pre-commit) may prefer integrating the
     ``code-review-graph`` commands into that manager manually instead.
 
-    Creates ``pre-commit`` if it doesn't exist, or appends to an existing
-    one — the hook is appended, not overwritten, preserving any hooks
-    already there. Falls back to the legacy ``.git/hooks`` resolution when
-    git itself is unavailable. Returns None when no hooks directory can be
-    determined.
+    Every hook is appended, never overwritten, and uses an owned marker for
+    idempotent upgrades and surgical uninstall. Returns the pre-commit path,
+    or None when no hooks directory can be determined.
     """
-    script = """\
-#!/bin/sh
+    risk_block = """\
 # Installed by code-review-graph. Remove this file to disable pre-commit graph checks.
 if command -v code-review-graph >/dev/null 2>&1; then
     code-review-graph update || true
     code-review-graph detect-changes --brief || true
 fi
 """
-    marker = "code-review-graph detect-changes"
+    risk_marker = "code-review-graph detect-changes"
 
     hooks_dir: Path | None = None
     try:
@@ -870,20 +891,132 @@ fi
             return None
         hooks_dir = git_dir / "hooks"
 
-    hook_path = hooks_dir / "pre-commit"
-    hook_path.parent.mkdir(parents=True, exist_ok=True)
+    hooks_dir.mkdir(parents=True, exist_ok=True)
 
-    if hook_path.exists():
-        existing = hook_path.read_text(encoding="utf-8")
-        if marker in existing:
-            return hook_path
-        hook_path.write_text(existing.rstrip("\n") + "\n" + script, encoding="utf-8")
-    else:
-        hook_path.write_text(script, encoding="utf-8")
+    def append_owned_block(hook_name: str, event: str) -> Path:
+        hook_path = hooks_dir / hook_name
+        marker = f"# >>> code-review-graph zero-touch ({hook_name}) >>>"
+        revision_arg = ' --range "ORIG_HEAD..HEAD"' if hook_name == "post-rewrite" else ""
+        graph_refresh = ""
+        if hook_name in {"post-merge", "post-checkout", "post-rewrite"}:
+            graph_refresh = (
+                '    code-review-graph update --repo '
+                '"$(git rev-parse --show-toplevel 2>/dev/null)" >/dev/null 2>&1 || true\n'
+            )
+        block = f"""\
+{marker}
+if command -v code-review-graph >/dev/null 2>&1; then
+{graph_refresh}\
+    code-review-graph team auto --event {event}{revision_arg} \\
+        --agent "${{CRG_AGENT_NAME:-git}}" \\
+        --repo "$(git rev-parse --show-toplevel 2>/dev/null)" >/dev/null 2>&1 || true
+fi
+# <<< code-review-graph zero-touch <<<
+"""
+        existing = (
+            hook_path.read_text(encoding="utf-8", errors="replace")
+            if hook_path.exists()
+            else "#!/bin/sh\n"
+        )
+        owned = ""
+        if hook_name == "pre-commit" and risk_marker not in existing:
+            owned += risk_block
+        if marker not in existing:
+            owned += block
+        if owned:
+            first_line = existing.splitlines()[0] if existing.splitlines() else ""
+            interpreters = {
+                Path(token).name.lower() for token in first_line.removeprefix("#!").split()
+            }
+            shell_hook = not first_line.startswith("#!") or bool(
+                interpreters & {"sh", "bash", "zsh", "dash", "ksh"}
+            )
+            if shell_hook:
+                lines = existing.splitlines(keepends=True)
+                insertion = 1 if lines and lines[0].startswith("#!") else 0
+                new_text = "".join(lines[:insertion])
+                if new_text and not new_text.endswith("\n"):
+                    new_text += "\n"
+                new_text += owned
+                if insertion < len(lines) and not owned.endswith("\n"):
+                    new_text += "\n"
+                new_text += "".join(lines[insertion:])
+                hook_path.write_text(new_text, encoding="utf-8")
+            else:
+                sidecar = hook_path.with_name(hook_path.name + _GIT_WRAPPED_SUFFIX)
+                if sidecar.exists():
+                    logger.warning(
+                        "Cannot safely wrap %s because %s already exists; leaving it unchanged.",
+                        hook_path,
+                        sidecar,
+                    )
+                    return hook_path
+                mode = stat.S_IMODE(hook_path.stat().st_mode)
+                wrapper = f"""\
+#!/bin/sh
+{_GIT_WRAPPER_MARKER}
+\"$(dirname \"$0\")/{sidecar.name}\" \"$@\"
+crg_original_status=$?
+[ \"$crg_original_status\" -eq 0 ] || exit \"$crg_original_status\"
+{owned}"""
+                temporary: Path | None = None
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        mode="w",
+                        encoding="utf-8",
+                        dir=hook_path.parent,
+                        prefix=f".{hook_path.name}.",
+                        suffix=".crg-wrapper",
+                        delete=False,
+                    ) as handle:
+                        temporary = Path(handle.name)
+                        handle.write(wrapper)
+                    temporary.chmod(0o755)
+                    hook_path.replace(sidecar)
+                    sidecar.chmod(mode)
+                    try:
+                        os.replace(temporary, hook_path)
+                        temporary = None
+                    except OSError:
+                        sidecar.replace(hook_path)
+                        raise
+                finally:
+                    if temporary is not None:
+                        temporary.unlink(missing_ok=True)
+        hook_path.chmod(0o755)
+        logger.info("Wrote git %s hook: %s", hook_name, hook_path)
+        return hook_path
 
-    hook_path.chmod(0o755)
-    logger.info("Wrote git pre-commit hook: %s", hook_path)
-    return hook_path
+    hook_events = {
+        "pre-commit": "change",
+        "post-commit": "post-commit",
+        "post-merge": "post-merge",
+        "post-checkout": "post-checkout",
+        "post-rewrite": "post-rewrite",
+        "pre-push": "pre-push",
+    }
+    for hook_name, event in hook_events.items():
+        append_owned_block(hook_name, event)
+    return hooks_dir / "pre-commit"
+
+
+def _is_crg_managed_hook_entry(entry: Any) -> bool:
+    """Recognize hook entries written by this installer across prior versions."""
+    if not isinstance(entry, dict):
+        return False
+    hooks = entry.get("hooks")
+    if not isinstance(hooks, list):
+        return False
+    for hook in hooks:
+        if not isinstance(hook, dict):
+            continue
+        command = str(hook.get("command") or "")
+        status = str(hook.get("statusMessage") or "")
+        if "command -v code-review-graph" in command:
+            return True
+        if status in {"Updating code-review-graph", "Checking code-review-graph status"}:
+            return True
+    return False
 
 
 def _merge_hooks_into_settings(
@@ -912,7 +1045,13 @@ def _merge_hooks_into_settings(
     merged_hooks = dict(existing_hooks)
     for hook_name, hook_entries in hooks_config.get("hooks", {}).items():
         if isinstance(merged_hooks.get(hook_name), list):
-            merged_list = list(merged_hooks[hook_name])
+            # Replace entries from older CRG versions so an upgrade does not
+            # execute both the old graph hook and the new zero-touch hook.
+            merged_list = [
+                entry
+                for entry in merged_hooks[hook_name]
+                if not _is_crg_managed_hook_entry(entry)
+            ]
             for entry in hook_entries:
                 if entry not in merged_list:
                     merged_list.append(entry)
@@ -942,7 +1081,7 @@ def install_hooks(repo_root: Path, platform: str = "claude") -> None:
         settings_dir = repo_root / ".qoder"
     else:
         settings_dir = repo_root / ".claude"
-    _merge_hooks_into_settings(settings_dir, generate_hooks_config(repo_root))
+    _merge_hooks_into_settings(settings_dir, generate_hooks_config(repo_root, platform))
 
 
 def install_codebuddy_hooks(repo_root: Path) -> Path:
@@ -953,7 +1092,7 @@ def install_codebuddy_hooks(repo_root: Path) -> Path:
     resolves the checkout at hook runtime instead of embedding the installer's
     absolute path, so committed settings work for every collaborator.
     """
-    hooks_config = generate_hooks_config(repo_root)
+    hooks_config = generate_hooks_config(repo_root, "codebuddy")
     # CodeBuddy's Bash tool can create or rewrite files without going through
     # Edit/Write, so its PostToolUse contract also observes Bash. The command
     # itself still resolves the repository dynamically at hook runtime.
@@ -994,7 +1133,11 @@ def install_codex_hooks(repo_root: Path) -> Path:
     merged_hooks = dict(existing_hooks)
     for hook_name, hook_entries in hooks_config.get("hooks", {}).items():
         if isinstance(merged_hooks.get(hook_name), list):
-            merged_list = list(merged_hooks[hook_name])
+            merged_list = [
+                entry
+                for entry in merged_hooks[hook_name]
+                if not _is_crg_managed_hook_entry(entry)
+            ]
             existing_commands = {
                 hook.get("command", "")
                 for entry in merged_list
@@ -1053,6 +1196,8 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 | `semantic_search_nodes_tool` | Finding functions/classes by name or keyword |
 | `get_architecture_overview_tool` | Understanding high-level codebase structure |
 | `refactor_tool` | Planning renames, finding dead code |
+| `get_symbol_history_tool` | Understanding who changed unfamiliar or pulled code and why |
+| `get_developer_context_tool` | Loading another developer/agent's handoff before continuing it |
 
 ### Workflow
 
@@ -1060,6 +1205,7 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes_tool` for code review.
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern=\"tests_for\" to check coverage.
+5. Before changing pulled or unfamiliar code, query Team Sync by symbol or developer.
 """
 
 # Copilot-specific instruction file content: uses VS Code tool references and
@@ -1103,6 +1249,8 @@ cover what you need.
 | `semantic_search_nodes_tool` | Find functions/classes by keyword |
 | `get_architecture_overview_tool` | High-level structure |
 | `refactor_tool` | Rename planning, dead code |
+| `get_symbol_history_tool` | Prior developer/agent context for a symbol |
+| `get_developer_context_tool` | A teammate's recent handoffs and decisions |
 
 ### Workflow
 
@@ -1110,6 +1258,7 @@ cover what you need.
 2. Use `detect_changes_tool` for code review.
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern=\"tests_for\" to check coverage.
+5. Query Team Sync before changing pulled or unfamiliar code.
 """
 
 # Maps instruction file path → (marker, section) for files that need content
@@ -1207,6 +1356,9 @@ set -euo pipefail
 cat > /dev/null || true
 
 msg="$(code-review-graph status --repo "__CRG_REPO__" 2>&1 | head -n 1 || true)"
+code-review-graph team auto --event session-start \
+    --agent gemini-cli \
+    --repo "__CRG_REPO__" >/dev/null 2>&1 || true
 
 CRG_MSG="$msg" python3 -c '
 import json,os
@@ -1226,6 +1378,9 @@ set -euo pipefail
 cat > /dev/null || true
 
 code-review-graph update --skip-flows --repo "__CRG_REPO__" >/dev/null 2>&1 || true
+code-review-graph team auto --event change \
+    --agent gemini-cli \
+    --repo "__CRG_REPO__" >/dev/null 2>&1 || true
 echo '{"suppressOutput": true}'
 exit 0
 """
@@ -1441,6 +1596,7 @@ cat > /dev/null
 
 # Run update; swallow errors so the hook always succeeds.
 output=$(code-review-graph update --skip-flows 2>&1) || true
+code-review-graph team auto --event change --agent cursor >/dev/null 2>&1 || true
 
 # Emit valid JSON on stdout per Cursor hooks protocol.
 python3 -c "
@@ -1462,6 +1618,7 @@ cat > /dev/null
 
 # Capture status output
 output=$(code-review-graph status 2>&1) || output="graph not built yet"
+code-review-graph team auto --event session-start --agent cursor >/dev/null 2>&1 || true
 
 # Emit valid JSON on stdout
 python3 -c "
@@ -1484,6 +1641,7 @@ cat > /dev/null
 
 # Run detect-changes; swallow errors
 output=$(code-review-graph detect-changes --brief 2>&1) || output=""
+code-review-graph team auto --event change --agent cursor >/dev/null 2>&1 || true
 
 # Emit valid JSON on stdout
 python3 -c "
@@ -1653,6 +1811,7 @@ export default (app: any) => {
   app.on("file.edited", async ({ $ }: { $: any }) => {
     try {
       await $`code-review-graph update --skip-flows`.quiet()
+      await $`code-review-graph team auto --event change --agent opencode`.quiet()
     } catch {
       // Swallow — graph may not be built yet for this project.
     }
@@ -1662,6 +1821,7 @@ export default (app: any) => {
   app.on("session.created", async ({ $ }: { $: any }) => {
     try {
       const result = await $`code-review-graph status`.quiet()
+      await $`code-review-graph team auto --event session-start --agent opencode`.quiet()
       const output = result.stdout?.toString().trim()
       if (output) {
         console.log("[code-review-graph]", output)

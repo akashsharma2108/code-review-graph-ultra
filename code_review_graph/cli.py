@@ -23,6 +23,13 @@ Usage:
     code-review-graph daemon logs [--repo ALIAS] [--follow] [--lines N]
     code-review-graph daemon add <path> [--alias NAME]
     code-review-graph daemon remove <path_or_alias>
+    code-review-graph team init --server URL --token TOKEN
+    code-review-graph team publish [--commit REF | --working-tree]
+    code-review-graph team import --range REVISION_RANGE
+    code-review-graph team auto --event EVENT [--range REVISION_RANGE]
+    code-review-graph team context [--developer ID | --symbol KEY | --commit SHA]
+    code-review-graph team sync
+    code-review-graph team serve [--host ADDR] [--port PORT]
 """
 
 from __future__ import annotations
@@ -131,6 +138,7 @@ def _print_banner() -> None:
     {g}repos{r}       List registered repositories
     {g}postprocess{r} Run post-processing {d}(flows, communities, FTS){r}
     {g}daemon{r}      Multi-repo watch daemon management
+    {g}team{r}        Share developer, commit, symbol, and agent context
     {g}eval{r}        Run evaluation benchmarks
     {g}serve{r}       Start MCP server {d}(stdio, or {g}--http{r} on localhost:5555){r}
 
@@ -314,17 +322,11 @@ def _handle_init(args: argparse.Namespace) -> None:
     if not skip_hooks and target in ("codex", "all"):
         hooks_path = install_codex_hooks(repo_root)
         print(f"Installed Codex hooks in {hooks_path}")
-        git_hook = install_git_hook(repo_root)
-        if git_hook:
-            print(f"Installed git pre-commit hook in {git_hook}")
     if not skip_hooks and target in ("claude", "qoder", "all"):
         platforms_to_install = [target] if target != "all" else ["claude", "qoder"]
         for plat in platforms_to_install:
             install_hooks(repo_root, platform=plat)
             print(f"Installed hooks in {repo_root / f'.{plat}' / 'settings.json'}")
-        git_hook = install_git_hook(repo_root)
-        if git_hook:
-            print(f"Installed git pre-commit hook in {git_hook}")
 
     # Cursor hooks (user-level, only if ~/.cursor exists — matching MCP detect)
     if not skip_hooks and target in ("all", "cursor") and PLATFORMS["cursor"]["detect"]():
@@ -348,6 +350,21 @@ def _handle_init(args: argparse.Namespace) -> None:
             print(f"Installed OpenCode plugin in {plugin_path}")
         except Exception as exc:
             logger.warning("Could not install OpenCode plugin: %s", exc)
+
+    # Git hooks are platform-independent and cover commits, merges, checkouts,
+    # rebases, and pushes even when an editor has no native lifecycle API.
+    if not skip_hooks:
+        git_hook = install_git_hook(repo_root)
+        if git_hook:
+            print(f"Installed git automation hooks in {git_hook.parent}")
+        from .team_automation import run_auto_event
+
+        automatic = run_auto_event("session-start", repo_root=repo_root, agent_name=target)
+        if automatic.get("status") != "skipped":
+            print(
+                "Team Sync automation: "
+                f"{automatic.get('status')} ({automatic.get('outbox_remaining', 0)} queued)"
+            )
 
     print()
     print("Next steps:")
@@ -517,6 +534,184 @@ def _run_graph_tool_command(args, repo_root: Path) -> None:
             repo_root=root,
         )
     print(json.dumps(result, indent=2, default=str))
+
+
+def _emit_team_result(result: dict, *, reveal_token: bool = False) -> None:
+    """Print one agent-readable result and turn structured errors into exit 1."""
+    if not reveal_token and "token" in result:
+        result = {**result, "token": "<redacted>"}  # nosec B105 - placeholder, not a secret
+    print(json.dumps(result, indent=2, default=str))
+    if result.get("status") == "error":
+        raise SystemExit(1)
+
+
+def _handle_team_command(args) -> None:
+    """Run collaborative team-sync commands without opening the local graph store."""
+    from .incremental import find_project_root
+    from .team_capture import developer_identity, repository_identity
+    from .team_server import run_team_server
+    from .team_store import TeamStore, generate_team_token
+    from .team_sync import TeamClient, TeamConfig
+    from .tools.team_tools import (
+        get_team_context_func,
+        list_team_activity_func,
+        publish_commit_range_func,
+        publish_work_capsule_func,
+        sync_team_context_func,
+        team_status_func,
+    )
+
+    command = args.team_command
+    if command == "auto":
+        from .team_automation import run_auto_event
+
+        root = find_project_root(Path(args.repo).expanduser() if args.repo else None).resolve()
+        _emit_team_result(run_auto_event(
+            args.event,
+            repo_root=root,
+            revision_range=args.range,
+            agent_name=args.agent,
+        ))
+        return
+    if command == "serve":
+        db_path = Path(args.db).expanduser().resolve()
+        token = args.bootstrap_token.strip()
+        with TeamStore(db_path) as store:
+            if token:
+                store.bootstrap(
+                    args.organization, args.organization_name, token, args.token_name,
+                )
+            elif not store.has_tokens():
+                raise SystemExit(
+                    "The team database has no access token. Pass --bootstrap-token "
+                    "or run `code-review-graph team token` first."
+                )
+        from .team_server import is_loopback_host
+
+        if not is_loopback_host(args.host):
+            print(
+                f"WARNING: binding to {args.host} serves plaintext HTTP beyond this "
+                "machine. Bearer tokens and capsule data cross the network "
+                "unencrypted; put a TLS-terminating reverse proxy in front of "
+                "this port before sharing the address.",
+                file=sys.stderr,
+            )
+        print(f"Team sync API listening on http://{args.host}:{args.port}")
+        run_team_server(db_path, host=args.host, port=args.port)
+        return
+
+    if command == "token":
+        db_path = Path(args.db).expanduser().resolve()
+        token = generate_team_token()
+        with TeamStore(db_path) as store:
+            store.bootstrap(
+                args.organization, args.organization_name, token, args.name,
+            )
+        _emit_team_result({
+            "status": "ok",
+            "database": str(db_path),
+            "organization": args.organization,
+            "token_name": args.name,
+            "token": token,
+            "warning": "This token is shown once; store it in a secret manager.",
+        }, reveal_token=True)
+        return
+
+    if command == "revoke-token":
+        db_path = Path(args.db).expanduser().resolve()
+        with TeamStore(db_path) as store:
+            revoked = store.revoke_token(args.organization, args.name)
+        _emit_team_result({
+            "status": "ok" if revoked else "error",
+            "summary": (
+                f"Revoked active token(s) named '{args.name}'."
+                if revoked else f"No active token named '{args.name}' was found."
+            ),
+            "organization": args.organization,
+            "token_name": args.name,
+        })
+        return
+
+    root = find_project_root(Path(args.repo).expanduser() if args.repo else None).resolve()
+    if command == "init":
+        repository = repository_identity(root, args.repository_key)
+        developer = developer_identity(
+            root,
+            external_id=args.developer_id,
+            display_name=args.developer_name,
+            email=args.developer_email,
+        )
+        server_url = args.server.rstrip("/")
+        registered = TeamClient(server_url, args.token).register_repository(repository)
+        config = TeamConfig(
+            server_url=server_url,
+            token=args.token,
+            repository_key=str(registered["external_id"]),
+            organization=str(registered.get("organization") or ""),
+            developer_id=developer["external_id"],
+            developer_name=developer["display_name"],
+            developer_email=developer["email"],
+        )
+        path = config.save(root)
+        _emit_team_result({
+            "status": "ok",
+            "summary": "Team sync is configured for this checkout.",
+            "config_path": str(path),
+            "server_url": server_url,
+            "repository": registered,
+            "developer": developer,
+        })
+        return
+
+    if command == "publish":
+        _emit_team_result(publish_work_capsule_func(
+            repo_root=str(root),
+            commit=args.commit,
+            working_tree=args.working_tree,
+            title=args.title,
+            summary=args.summary,
+            intent=args.intent,
+            approach=args.approach,
+            outcome=args.outcome,
+            status=args.status,
+            agent_name=args.agent,
+            session_id=args.session_id,
+            decisions=args.decision,
+            open_questions=args.question,
+            tests=args.test,
+        ))
+        return
+    if command == "import":
+        _emit_team_result(publish_commit_range_func(
+            args.range,
+            repo_root=str(root),
+            max_commits=args.max_commits,
+            agent_name=args.agent,
+        ))
+        return
+    if command == "sync":
+        _emit_team_result(sync_team_context_func(repo_root=str(root), limit=args.limit))
+        return
+    if command == "context":
+        _emit_team_result(get_team_context_func(
+            repo_root=str(root),
+            developer=args.developer,
+            symbol=args.symbol,
+            commit=args.commit,
+            since=args.since,
+            limit=args.limit,
+            offline=args.offline,
+        ))
+        return
+    if command == "activity":
+        _emit_team_result(list_team_activity_func(
+            repo_root=str(root), limit=args.limit, offline=args.offline,
+        ))
+        return
+    if command == "status":
+        _emit_team_result(team_status_func(repo_root=str(root)))
+        return
+    raise SystemExit(f"Unknown team command: {command}")
 
 
 def main() -> None:
@@ -1013,6 +1208,137 @@ def main() -> None:
     refactor_cmd.add_argument("--path", default=None, help="File-path substring filter")
     refactor_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
 
+    # collaborative team sync
+    team_cmd = sub.add_parser(
+        "team", help="Share developer, commit, symbol, and agent-session context",
+    )
+    team_sub = team_cmd.add_subparsers(dest="team_command")
+
+    team_serve = team_sub.add_parser("serve", help="Run the central team-sync API")
+    team_serve.add_argument(
+        "--db", default="~/.code-review-graph/team-server.db",
+        help="Central SQLite database path",
+    )
+    team_serve.add_argument("--host", default="127.0.0.1", help="Bind address")
+    team_serve.add_argument("--port", type=int, default=8766, help="Listen port")
+    team_serve.add_argument(
+        "--bootstrap-token", default="",
+        help="Create the organization/token if needed before serving",
+    )
+    team_serve.add_argument("--organization", default="default")
+    team_serve.add_argument("--organization-name", default="Default Organization")
+    team_serve.add_argument("--token-name", default="bootstrap")
+
+    team_token = team_sub.add_parser(
+        "token", help="Create an organization access token and display it once",
+    )
+    team_token.add_argument(
+        "--db", default="~/.code-review-graph/team-server.db",
+        help="Central SQLite database path",
+    )
+    team_token.add_argument("--organization", default="default")
+    team_token.add_argument("--organization-name", default="Default Organization")
+    team_token.add_argument("--name", default="cli")
+
+    team_revoke = team_sub.add_parser(
+        "revoke-token", help="Revoke central access tokens by name",
+    )
+    team_revoke.add_argument(
+        "--db", default="~/.code-review-graph/team-server.db",
+        help="Central SQLite database path",
+    )
+    team_revoke.add_argument("--organization", default="default")
+    team_revoke.add_argument("--name", required=True)
+
+    team_init = team_sub.add_parser(
+        "init", help="Connect this checkout to a central team-sync API",
+    )
+    team_init.add_argument("--server", required=True, help="Team API base URL")
+    team_init.add_argument("--token", required=True, help="Bearer access token")
+    team_init.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_init.add_argument(
+        "--repository-key", default="",
+        help="Stable repository ID (normally derived from origin URL)",
+    )
+    team_init.add_argument("--developer-id", default="")
+    team_init.add_argument("--developer-name", default="")
+    team_init.add_argument("--developer-email", default="")
+
+    team_publish = team_sub.add_parser(
+        "publish", help="Publish a commit or working-tree handoff capsule",
+    )
+    publish_source = team_publish.add_mutually_exclusive_group()
+    publish_source.add_argument("--commit", default="HEAD", help="Commit to capture")
+    publish_source.add_argument(
+        "--working-tree", action="store_true",
+        help="Capture current uncommitted changes",
+    )
+    team_publish.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_publish.add_argument("--title", default="Working-tree handoff")
+    team_publish.add_argument("--summary", default="")
+    team_publish.add_argument("--intent", default="")
+    team_publish.add_argument("--approach", default="")
+    team_publish.add_argument("--outcome", default="")
+    team_publish.add_argument(
+        "--status",
+        choices=["in_progress", "completed", "blocked", "failed", "abandoned"],
+        default=None,
+    )
+    team_publish.add_argument("--agent", default="", help="Agent/client name")
+    team_publish.add_argument("--session-id", default="")
+    team_publish.add_argument("--decision", action="append", default=[])
+    team_publish.add_argument("--question", action="append", default=[])
+    team_publish.add_argument(
+        "--test", action="append", default=[], metavar="NAME=STATUS",
+        help="Test result; repeat for multiple tests",
+    )
+
+    team_import = team_sub.add_parser(
+        "import", help="Backfill an oldest-first Git commit range",
+    )
+    team_import.add_argument("--range", required=True, help="Git revision/range")
+    team_import.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_import.add_argument("--max-commits", type=_positive_int, default=100)
+    team_import.add_argument("--agent", default="", help="Agent/client name")
+
+    team_auto = team_sub.add_parser(
+        "auto", help="Process a fail-open Git or agent lifecycle event",
+    )
+    team_auto.add_argument(
+        "--event",
+        required=True,
+        choices=[
+            "session-start", "change", "post-commit", "post-merge",
+            "post-checkout", "post-rewrite", "pre-push", "ci", "flush",
+        ],
+    )
+    team_auto.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_auto.add_argument("--range", default="", help="Optional Git revision/range")
+    team_auto.add_argument("--agent", default="", help="Agent/client name")
+
+    team_sync = team_sub.add_parser("sync", help="Refresh the local offline team cache")
+    team_sync.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_sync.add_argument("--limit", type=_positive_int, default=500)
+
+    team_context = team_sub.add_parser(
+        "context", help="Get handoffs by developer, symbol, or commit",
+    )
+    team_context.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_context.add_argument("--developer", default="")
+    team_context.add_argument("--symbol", default="")
+    team_context.add_argument("--commit", default="")
+    team_context.add_argument("--since", default="", help="RFC 3339 lower time bound")
+    team_context.add_argument("--limit", type=_positive_int, default=20)
+    team_context.add_argument("--offline", action="store_true")
+
+    team_activity = team_sub.add_parser("activity", help="List recent team work")
+    team_activity.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    team_activity.add_argument("--limit", type=_positive_int, default=20)
+    team_activity.add_argument("--offline", action="store_true")
+
+    team_status = team_sub.add_parser("status", help="Show team connection/cache status")
+    team_status.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+
     # serve / mcp
     serve_cmd = sub.add_parser(
         "serve",
@@ -1171,6 +1497,13 @@ def main() -> None:
             )
             raise SystemExit(1)
         _run_graph_tool_command(args, repo_root)
+        return
+
+    if args.command == "team":
+        if not args.team_command:
+            team_cmd.print_help()
+            return
+        _handle_team_command(args)
         return
 
     embedding_refresh_kwargs = _embedding_refresh_kwargs(args, ap)

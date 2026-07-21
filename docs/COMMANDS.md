@@ -268,6 +268,38 @@ kind: str | None
 limit: int = 20
 ```
 
+### Team Sync Tools
+
+#### `publish_work_capsule_tool`
+Publish one commit or the working tree with developer, agent-session, decision,
+test, changed-symbol, and local impact context.
+
+#### `publish_commit_range_tool`
+Backfill an oldest-first Git revision range. Each commit author becomes the
+capsule's developer identity, and idempotency makes CI retries safe.
+
+#### `sync_team_context_tool`
+Fetch new central events after the local cursor into the offline cache.
+
+#### `get_team_context_tool`
+Query capsules by any combination of developer, symbol/file, commit prefix,
+and RFC 3339 lower time bound.
+
+#### `get_developer_context_tool`
+Retrieve what a named developer and their agents built, decided, tested, and
+left open.
+
+#### `get_symbol_history_tool`
+Retrieve portable history for a symbol key or repository-relative file path.
+
+#### `list_team_activity_tool`
+List recent capsules and aggregate activity by developer.
+
+#### `team_sync_status_tool`
+Check server health, checkout configuration, and the local event cursor.
+
+See [TEAM_SYNC.md](TEAM_SYNC.md) for parameters, deployment, privacy, and the API.
+
 ## MCP Prompts (5 workflow templates)
 
 ### `review_changes`
@@ -354,6 +386,22 @@ code-review-graph daemon status                     # Show daemon status and rep
 code-review-graph daemon logs [--repo ALIAS] [--follow]  # View daemon or per-repo logs
 code-review-graph daemon add <path> [--alias NAME]  # Add a repo to daemon config
 code-review-graph daemon remove <path_or_alias>     # Remove a repo from daemon config
+
+# Team Sync
+code-review-graph team token --db <path>             # Create a server token
+code-review-graph team revoke-token --db <path> --name <name>  # Revoke token(s)
+code-review-graph team serve --db <path>             # Run the central API
+code-review-graph team init --server <url> --token <token>  # Enroll checkout
+code-review-graph team publish --commit HEAD         # Publish a commit handoff
+code-review-graph team publish --working-tree --summary <text>  # Handoff WIP
+code-review-graph team import --range 'main~10..main' # Backfill commit history
+code-review-graph team auto --event flush             # Force durable outbox retry
+code-review-graph team auto --event ci --range <range> # Fail-open CI capture
+code-review-graph team context --developer <id>      # Query shared context
+code-review-graph team context --symbol <symbol-key> # Query symbol history
+code-review-graph team activity                      # Recent team work
+code-review-graph team sync                          # Refresh offline cache
+code-review-graph team status                        # Connectivity/cache/outbox status
 
 # Evaluation
 code-review-graph eval                         # Run evaluation benchmarks

@@ -274,3 +274,28 @@ CREATE TABLE embeddings (
 ```
 
 Indexes include qualified-name, file-path, node-kind, edge source/target/kind, community, flow criticality, risk score, compound edge lookup indexes, and the composite edge upsert index.
+
+## Team Sync temporal schema
+
+Team Sync does not merge shared history into the local graph schema above. Its
+central database uses these normalized tables:
+
+| Table | Purpose |
+|---|---|
+| `organizations` | Tenant/security boundary |
+| `api_tokens` | Organization token hashes and revocation timestamp |
+| `repositories` | Stable repository identity and credential-free remote URL |
+| `developers` | Organization-scoped developer identity |
+| `agent_sessions` | Agent/client, branch, lifecycle, and session summary |
+| `commits` | Commit SHA, author, parents, time, message, and branch |
+| `capsules` | Temporal intent, approach, outcome, status, and idempotency hash |
+| `capsule_files` | Repository-relative changed paths and line counts |
+| `capsule_symbols` | Portable symbol keys, ranges, change type, and impact JSON |
+| `capsule_decisions` | Decisions, rationale, and alternatives |
+| `capsule_questions` | Open/resolved handoff questions |
+| `capsule_tests` | Test command, result, and details |
+| `team_events` | Ordered repository event stream used by client cursors |
+
+The per-checkout `team-cache.db` stores received events and denormalized capsule
+JSON for offline developer/symbol/commit queries. Central file-path validation
+rejects absolute paths and parent traversal. See [TEAM_SYNC.md](TEAM_SYNC.md).

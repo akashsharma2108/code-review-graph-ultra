@@ -380,6 +380,39 @@ def test_instruction_inventory_and_git_hook_are_surgical(
     assert hook.read_text(encoding="utf-8") == "#!/bin/sh\necho user-hook\n"
 
 
+def test_uninstall_removes_all_zero_touch_hooks_but_keeps_user_commands(
+    fake_repo: Path,
+    fake_home: Path,
+) -> None:
+    post_merge = fake_repo / ".git" / "hooks" / "post-merge"
+    _write(post_merge, "#!/bin/sh\necho user-merge\n")
+    skills.install_git_hook(fake_repo)
+
+    uninstall.run(repo=fake_repo, keep_data=True)
+
+    assert post_merge.read_text(encoding="utf-8") == "#!/bin/sh\necho user-merge\n"
+    for hook_name in ("pre-commit", "post-commit", "post-checkout", "post-rewrite", "pre-push"):
+        assert not (fake_repo / ".git" / "hooks" / hook_name).exists()
+
+
+def test_uninstall_restores_wrapped_non_shell_git_hook(
+    fake_repo: Path,
+    fake_home: Path,
+) -> None:
+    hook = fake_repo / ".git" / "hooks" / "post-commit"
+    original = "#!/usr/bin/env python3\nprint('user hook')\n"
+    _write(hook, original)
+    hook.chmod(0o755)
+    skills.install_git_hook(fake_repo)
+    sidecar = hook.with_name("post-commit.crg-original")
+    assert sidecar.exists()
+
+    uninstall.run(repo=fake_repo, keep_data=True)
+
+    assert hook.read_text(encoding="utf-8") == original
+    assert not sidecar.exists()
+
+
 def test_modified_instruction_section_is_not_guessed_or_truncated(
     fake_repo: Path,
     fake_home: Path,

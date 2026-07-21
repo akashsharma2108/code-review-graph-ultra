@@ -206,6 +206,7 @@ class TestGenerateHooksConfig:
         inner = entry["hooks"][0]
         assert inner["type"] == "command"
         assert "update" in inner["command"]
+        assert "team auto --event change" in inner["command"]
         assert inner["command"].startswith("cat >/dev/null || true; ")
         assert 0 < inner["timeout"] <= 600
 
@@ -217,6 +218,7 @@ class TestGenerateHooksConfig:
         inner = entry["hooks"][0]
         assert inner["type"] == "command"
         assert "status" in inner["command"]
+        assert "team auto --event session-start" in inner["command"]
         assert inner["command"].startswith("cat >/dev/null || true; ")
         assert 0 < inner["timeout"] <= 600
 
@@ -392,6 +394,78 @@ class TestInstallGitHook:
         install_git_hook(repo)
         content = (repo / ".git" / "hooks" / "pre-commit").read_text()
         assert content.count("code-review-graph detect-changes") == 1
+        assert content.count("code-review-graph zero-touch (pre-commit)") == 1
+
+    def test_installs_zero_touch_git_lifecycle_hooks_without_clobbering(self, tmp_path):
+        repo = self._make_git_repo(tmp_path)
+        post_merge = repo / ".git" / "hooks" / "post-merge"
+        post_merge.write_text("#!/bin/sh\nexisting-command\n", encoding="utf-8")
+        install_git_hook(repo)
+        install_git_hook(repo)
+
+        expected = {
+            "pre-commit": "change",
+            "post-commit": "post-commit",
+            "post-merge": "post-merge",
+            "post-checkout": "post-checkout",
+            "post-rewrite": "post-rewrite",
+            "pre-push": "pre-push",
+        }
+        for hook_name, event in expected.items():
+            hook = repo / ".git" / "hooks" / hook_name
+            content = hook.read_text(encoding="utf-8")
+            assert os.access(hook, os.X_OK)
+            assert f"team auto --event {event}" in content
+            assert content.count(f"zero-touch ({hook_name})") == 1
+            subprocess.run(["sh", "-n", str(hook)], check=True, capture_output=True)
+        assert "existing-command" in post_merge.read_text(encoding="utf-8")
+
+    def test_zero_touch_runs_before_an_existing_shell_hook_exits(self, tmp_path):
+        repo = self._init_real_repo(tmp_path / "early-exit")
+        hook = repo / ".git" / "hooks" / "post-commit"
+        hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        hook.chmod(0o755)
+        install_git_hook(repo)
+        content = hook.read_text(encoding="utf-8")
+        assert content.index("team auto --event post-commit") < content.index("exit 0")
+
+        binary_dir = tmp_path / "bin"
+        binary_dir.mkdir()
+        stub = binary_dir / "code-review-graph"
+        stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CRG_HOOK_LOG"\n')
+        stub.chmod(0o755)
+        log = tmp_path / "hook.log"
+        env = {**os.environ, "PATH": f"{binary_dir}{os.pathsep}{os.environ['PATH']}"}
+        env["CRG_HOOK_LOG"] = str(log)
+        subprocess.run([str(hook)], cwd=repo, env=env, check=True)
+        assert "team auto --event post-commit" in log.read_text(encoding="utf-8")
+
+    def test_non_shell_hook_is_wrapped_and_still_executes(self, tmp_path):
+        repo = self._init_real_repo(tmp_path / "python-hook")
+        hook = repo / ".git" / "hooks" / "post-commit"
+        original = (
+            "#!/usr/bin/env python3\n"
+            "from pathlib import Path\n"
+            "Path('original-hook-ran').write_text('yes', encoding='utf-8')\n"
+        )
+        hook.write_text(original, encoding="utf-8")
+        hook.chmod(0o755)
+        install_git_hook(repo)
+        sidecar = hook.with_name("post-commit.crg-original")
+        assert sidecar.read_text(encoding="utf-8") == original
+        assert "preserve a non-shell hook" in hook.read_text(encoding="utf-8")
+
+        binary_dir = tmp_path / "bin"
+        binary_dir.mkdir()
+        stub = binary_dir / "code-review-graph"
+        stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CRG_HOOK_LOG"\n')
+        stub.chmod(0o755)
+        log = tmp_path / "hook.log"
+        env = {**os.environ, "PATH": f"{binary_dir}{os.pathsep}{os.environ['PATH']}"}
+        env["CRG_HOOK_LOG"] = str(log)
+        subprocess.run([str(hook)], cwd=repo, env=env, check=True)
+        assert (repo / "original-hook-ran").read_text(encoding="utf-8") == "yes"
+        assert "team auto --event post-commit" in log.read_text(encoding="utf-8")
 
     def test_no_git_dir_returns_none(self, tmp_path):
         assert install_git_hook(tmp_path) is None
@@ -494,6 +568,7 @@ class TestGenerateCodexHooksConfig:
         inner = entry["hooks"][0]
         assert inner["type"] == "command"
         assert "update" in inner["command"]
+        assert "team auto --event change" in inner["command"]
         assert inner["command"].startswith("cat >/dev/null || true; ")
         assert inner["statusMessage"] == "Updating code-review-graph"
 
@@ -505,6 +580,7 @@ class TestGenerateCodexHooksConfig:
         inner = entry["hooks"][0]
         assert inner["type"] == "command"
         assert "status" in inner["command"]
+        assert "team auto --event session-start" in inner["command"]
         assert inner["command"].startswith("cat >/dev/null || true; ")
         assert inner["statusMessage"] == "Checking code-review-graph status"
 

@@ -1,4 +1,4 @@
-# LLM-OPTIMIZED REFERENCE -- code-review-graph v2.3.6
+# LLM-OPTIMIZED REFERENCE -- code-review-graph v2.3.7
 
 AI coding agents: Read ONLY the exact `<section>` you need. Never load the whole file.
 
@@ -28,12 +28,24 @@ Never include full files unless explicitly asked.
 Core MCP tools: get_minimal_context_tool, detect_changes_tool, get_review_context_tool, get_impact_radius_tool, query_graph_tool, semantic_search_nodes_tool, get_architecture_overview_tool, get_affected_flows_tool, list_flows_tool, list_communities_tool, refactor_tool, build_or_update_graph_tool, run_postprocess_tool, embed_graph_tool, list_graph_stats_tool, get_docs_section_tool
 MCP prompts (5): review_changes, architecture_map, debug_issue, onboard_developer, pre_merge_check
 Skills: build-graph, debug-issue, explore-codebase, refactor-safely, review-changes, review-delta, review-pr
-CLI: code-review-graph [install|init|build|update|status|watch|visualize|serve|mcp|wiki|detect-changes|postprocess|embed|register|unregister|repos|eval|daemon]
+CLI: code-review-graph [install|init|build|update|status|watch|visualize|serve|mcp|wiki|detect-changes|postprocess|embed|register|unregister|repos|eval|daemon|team]
 Token efficiency: Prefer detail_level="minimal" where available. Always call get_minimal_context_tool first. Some review/context tools return compact estimated context_savings metadata.
 </section>
 
+<section name="team-sync">
+When changing code pulled from another developer, call get_symbol_history_tool for the
+target symbol/file, then get_developer_context_tool for the author when useful. Capsules
+provide intent, approach, outcome, decisions, questions, tests, commits, files, and impact.
+Call publish_work_capsule_tool after completing work or when handing off unfinished work.
+Installed hooks automatically capture edits/commits and sync on session/pull events through
+a durable local outbox. Use sync_team_context_tool to force-refresh the offline cache;
+normal online queries fall back to it.
+Other tools: publish_commit_range_tool, get_team_context_tool, list_team_activity_tool,
+team_sync_status_tool. Setup/deployment: docs/TEAM_SYNC.md or `code-review-graph team --help`.
+</section>
+
 <section name="legal">
-MIT licence. Core graph/review workflows are local and there is no telemetry. DB file: .code-review-graph/graph.db. Optional cloud embeddings send embedded source snippets to the configured provider only when selected.
+MIT licence. Core graph/review workflows are local and there is no telemetry. DB file: .code-review-graph/graph.db. Team Sync is opt-in and sends portable provenance, not source contents, to the configured team server. Optional cloud embeddings send embedded source snippets to the configured provider only when selected.
 </section>
 
 <section name="watch">

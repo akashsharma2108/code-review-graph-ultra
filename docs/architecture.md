@@ -20,7 +20,7 @@
 │  ┌────────────────────────────────────────────┐              │
 │  │      MCP Server (stdio or localhost HTTP)  │              │
 │  │                                            │              │
-│  │  30 MCP Tools + 5 MCP Prompts              │              │
+│  │  38 MCP Tools + 5 MCP Prompts              │              │
 │  │  ├── Core: build, impact, query, review,   │              │
 │  │  │   search, traverse, embed, stats, docs  │              │
 │  │  ├── Flows: list, get, affected            │              │
@@ -28,7 +28,8 @@
 │  │  ├── Analysis: detect_changes, refactor,   │              │
 │  │  │   apply_refactor, hotspots, gaps        │              │
 │  │  ├── Wiki: generate, get_page              │              │
-│  │  └── Multi-repo: list_repos, cross_search  │              │
+│  │  ├── Multi-repo: list_repos, cross_search  │              │
+│  │  └── Team Sync: publish, history, activity │              │
 │  └────────────────┬───────────────────────────┘              │
 └───────────────────┼──────────────────────────────────────────┘
                     │
@@ -70,6 +71,17 @@
 6. Where a cheap baseline can be estimated, compact `context_savings` metadata is attached as an estimate rather than an exact tokenisation
 
 ## Storage
+
+### Team Sync storage
+
+Team Sync adds a deliberately separate temporal store and event protocol. The
+local `graph.db` remains a disposable current-checkout index with absolute paths.
+The central Team Sync database stores organization-scoped repositories,
+developers, commits, agent sessions, work capsules, relative file paths, portable
+symbol keys, decisions, questions, tests, and ordered events. Each checkout also
+keeps a WAL-enabled `team-cache.db` cursor/cache and durable publication outbox. Git
+and agent lifecycle hooks enqueue before making fail-open network requests. See
+[TEAM_SYNC.md](TEAM_SYNC.md) for the full data flow and trust boundaries.
 
 ### SQLite Schema
 - **nodes** table: id, kind, name, qualified_name, file_path, line_start/end, language, community_id, etc.

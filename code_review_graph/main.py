@@ -39,6 +39,7 @@ from .tools import (
     get_architecture_overview_func,
     get_bridge_nodes_func,
     get_community_func,
+    get_developer_context_func,
     get_docs_section,
     get_flow,
     get_hub_nodes_func,
@@ -48,15 +49,22 @@ from .tools import (
     get_review_context,
     get_suggested_questions_func,
     get_surprising_connections_func,
+    get_symbol_history_func,
+    get_team_context_func,
     get_wiki_page_func,
     list_communities_func,
     list_flows,
     list_graph_stats,
     list_repos_func,
+    list_team_activity_func,
+    publish_commit_range_func,
+    publish_work_capsule_func,
     query_graph,
     refactor_func,
     run_postprocess,
     semantic_search_nodes,
+    sync_team_context_func,
+    team_status_func,
     traverse_graph_func,
     with_provenance,
 )
@@ -89,7 +97,9 @@ mcp = FastMCP(
     instructions=(
         "Persistent incremental knowledge graph for token-efficient, "
         "context-aware code reviews. Parses your codebase with Tree-sitter, "
-        "builds a structural graph, and provides smart impact analysis."
+        "builds a structural graph, and provides smart impact analysis. "
+        "When Team Sync is configured, query shared developer/symbol history "
+        "before changing pulled code and publish a work capsule when handing off."
     ),
 )
 
@@ -949,6 +959,138 @@ def cross_repo_search_tool(
         limit: Maximum results per repo. Default: 20.
     """
     return cross_repo_search_func(query=query, kind=kind, limit=limit)
+
+
+@mcp.tool()
+def publish_work_capsule_tool(
+    commit: str = "HEAD",
+    working_tree: bool = False,
+    title: str = "Working-tree handoff",
+    summary: str = "",
+    intent: str = "",
+    approach: str = "",
+    outcome: str = "",
+    status: str = "",
+    agent_name: str = "",
+    session_id: str = "",
+    decisions: Optional[list[str]] = None,
+    open_questions: Optional[list[str]] = None,
+    tests: Optional[list[str]] = None,
+    repo_root: Optional[str] = None,
+) -> dict:
+    """Publish a portable developer/agent work capsule to the team service.
+
+    By default captures one Git commit, including changed files, graph-mapped
+    symbols, callers, callees, and tests. Set ``working_tree=True`` to publish
+    an in-progress handoff; uncommitted handoffs require ``summary``.
+
+    Tests use ``name=status`` values, for example ``pytest=passed``.
+    The team service must first be configured with ``code-review-graph team init``.
+    """
+    root = _resolve_repo_root(repo_root)
+    return publish_work_capsule_func(
+        repo_root=root, commit=commit, working_tree=working_tree, title=title,
+        summary=summary, intent=intent, approach=approach, outcome=outcome,
+        status=status, agent_name=agent_name, session_id=session_id,
+        decisions=decisions, open_questions=open_questions, tests=tests,
+    )
+
+
+@mcp.tool()
+def publish_commit_range_tool(
+    revision_range: str,
+    max_commits: int = 100,
+    agent_name: str = "",
+    repo_root: Optional[str] = None,
+) -> dict:
+    """Backfill multiple Git commits into team history in oldest-first order.
+
+    This is useful in CI after a push or when enrolling an existing repository.
+    ``revision_range`` accepts normal Git syntax such as ``main~10..main``.
+    Commit authorship determines each capsule's developer identity.
+    """
+    return publish_commit_range_func(
+        revision_range,
+        repo_root=_resolve_repo_root(repo_root),
+        max_commits=max_commits,
+        agent_name=agent_name,
+    )
+
+
+@mcp.tool()
+def sync_team_context_tool(
+    limit: int = 500,
+    repo_root: Optional[str] = None,
+) -> dict:
+    """Download new team work events into the checkout's offline cache."""
+    return sync_team_context_func(
+        repo_root=_resolve_repo_root(repo_root), limit=limit,
+    )
+
+
+@mcp.tool()
+def get_team_context_tool(
+    developer: str = "",
+    symbol: str = "",
+    commit: str = "",
+    since: str = "",
+    limit: int = 20,
+    offline: bool = False,
+    repo_root: Optional[str] = None,
+) -> dict:
+    """Get shared handoff context filtered by developer, symbol, or commit."""
+    return get_team_context_func(
+        repo_root=_resolve_repo_root(repo_root), developer=developer,
+        symbol=symbol, commit=commit, since=since, limit=limit, offline=offline,
+    )
+
+
+@mcp.tool()
+def get_developer_context_tool(
+    developer: str,
+    since: str = "",
+    limit: int = 20,
+    offline: bool = False,
+    repo_root: Optional[str] = None,
+) -> dict:
+    """Explain what a developer and their agents built, decided, and left open."""
+    return get_developer_context_func(
+        developer, repo_root=_resolve_repo_root(repo_root), since=since,
+        limit=limit, offline=offline,
+    )
+
+
+@mcp.tool()
+def get_symbol_history_tool(
+    symbol: str,
+    since: str = "",
+    limit: int = 20,
+    offline: bool = False,
+    repo_root: Optional[str] = None,
+) -> dict:
+    """Return the cross-developer work history and decisions for a code symbol."""
+    return get_symbol_history_func(
+        symbol, repo_root=_resolve_repo_root(repo_root), since=since,
+        limit=limit, offline=offline,
+    )
+
+
+@mcp.tool()
+def list_team_activity_tool(
+    limit: int = 20,
+    offline: bool = False,
+    repo_root: Optional[str] = None,
+) -> dict:
+    """List recent team activity and capsule counts by developer."""
+    return list_team_activity_func(
+        repo_root=_resolve_repo_root(repo_root), limit=limit, offline=offline,
+    )
+
+
+@mcp.tool()
+def team_sync_status_tool(repo_root: Optional[str] = None) -> dict:
+    """Check team server connectivity and the local event cursor."""
+    return team_status_func(repo_root=_resolve_repo_root(repo_root))
 
 
 @mcp.prompt()
