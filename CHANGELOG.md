@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.3.8] - 2026-07-21
+
+### Added
+
+- Added a `team-sync` agent skill, generated into every configured platform by
+  `code-review-graph install` and bundled in `skills/`. It teaches agents to
+  query capsule history (`get_symbol_history_tool`, `get_team_context_tool`)
+  before modifying unfamiliar code and to publish intent, decisions, and open
+  questions via `publish_work_capsule_tool` when handing off work.
+
 ## [2.3.7.post1] - 2026-07-21
 
 Documentation-only post release for the `code-review-graph-ultra` fork.

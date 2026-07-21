@@ -340,7 +340,7 @@ wheels = [
 
 [[package]]
 name = "code-review-graph-ultra"
-version = "2.3.7.post1"
+version = "2.3.8"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
