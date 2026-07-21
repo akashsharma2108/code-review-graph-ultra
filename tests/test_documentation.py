@@ -33,12 +33,12 @@ def test_pip_extra_examples_use_cross_shell_double_quotes():
     for readme_name in README_FILES:
         content = (ROOT / readme_name).read_text(encoding="utf-8")
         for group in OPTIONAL_GROUPS:
-            command = f'pip install "code-review-graph[{group}]"'
+            command = f'pip install "code-review-graph-ultra[{group}]"'
             assert command in content, f"{readme_name} is missing {command}"
 
 
 def test_current_user_docs_have_no_unquoted_pip_extras():
-    pattern = re.compile(r"pip install code-review-graph\[[A-Za-z0-9-]+\]")
+    pattern = re.compile(r"pip install code-review-graph(?:-ultra)?\[[A-Za-z0-9-]+\]")
     for doc_name in USER_DOC_FILES:
         content = (ROOT / doc_name).read_text(encoding="utf-8")
         assert pattern.search(content) is None, f"unquoted pip extras in {doc_name}"

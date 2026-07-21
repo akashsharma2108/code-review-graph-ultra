@@ -41,7 +41,7 @@ AIコーディングツールはレビュータスクでコードベースの大
 ## クイックスタート
 
 ```bash
-pip install code-review-graph                     # または: pipx install code-review-graph
+pip install code-review-graph-ultra                     # または: pipx install code-review-graph-ultra
 code-review-graph install          # 対応プラットフォームを自動検出して設定
 code-review-graph build            # コードベースを解析
 ```
@@ -269,13 +269,13 @@ node_modules/**
 オプションの依存グループ：
 
 ```bash
-pip install "code-review-graph[embeddings]"          # ローカルベクトル埋め込み (sentence-transformers)
-pip install "code-review-graph[google-embeddings]"   # Google Gemini埋め込み
-pip install "code-review-graph[communities]"         # コミュニティ検出 (igraph)
-pip install "code-review-graph[enrichment]"          # Python呼び出し解決の補強 (Jedi)
-pip install "code-review-graph[eval]"                # 評価ベンチマーク (matplotlib)
-pip install "code-review-graph[wiki]"                # LLMサマリー付きWiki生成 (ollama)
-pip install "code-review-graph[all]"                 # 全オプション依存
+pip install "code-review-graph-ultra[embeddings]"          # ローカルベクトル埋め込み (sentence-transformers)
+pip install "code-review-graph-ultra[google-embeddings]"   # Google Gemini埋め込み
+pip install "code-review-graph-ultra[communities]"         # コミュニティ検出 (igraph)
+pip install "code-review-graph-ultra[enrichment]"          # Python呼び出し解決の補強 (Jedi)
+pip install "code-review-graph-ultra[eval]"                # 評価ベンチマーク (matplotlib)
+pip install "code-review-graph-ultra[wiki]"                # LLMサマリー付きWiki生成 (ollama)
+pip install "code-review-graph-ultra[all]"                 # 全オプション依存
 ```
 
 OpenAI互換の埋め込み（本家OpenAI、Azure、または自前のゲートウェイ: new-api / LiteLLM / vLLM / LocalAI / Ollama openaiモード）は追加インストール不要です。環境変数を設定し、`embed_graph` に `provider="openai"` を渡すだけで動作します：
@@ -325,6 +325,6 @@ MIT。詳細は [LICENSE](LICENSE) を参照してください。
 <p align="center">
 <br>
 <a href="https://code-review-graph.com">code-review-graph.com</a><br><br>
-<code>pip install code-review-graph && code-review-graph install</code><br>
+<code>pip install code-review-graph-ultra && code-review-graph install</code><br>
 <sub>Codex、Claude Code、Cursor、Windsurf、Zed、Continue、OpenCode、Antigravity、Gemini CLI、Qwen、Kiro、Qoder、GitHub Copilotなど、対応するAIコーディングツールを自動検出して設定</sub>
 </p>

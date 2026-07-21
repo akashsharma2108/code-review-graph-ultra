@@ -60,7 +60,7 @@ AI coding tools can end up re-reading large parts of your codebase on review tas
 ## Quick Start
 
 ```bash
-pip install code-review-graph                     # or: pipx install code-review-graph
+pip install code-review-graph-ultra    # or: pipx install code-review-graph-ultra
 code-review-graph install          # auto-detects and configures all supported platforms
 code-review-graph build            # parse your codebase
 ```
@@ -109,6 +109,96 @@ Build the code review graph for this project
 ```
 
 The initial build takes ~10 seconds for a 500-file project. After that, watch mode and supported hooks can keep the graph updated automatically.
+
+### Set up Team Sync for your company
+
+Team Sync needs one central server (a single Python process backed by one SQLite file) and one `init` per developer checkout. Full reference: [docs/TEAM_SYNC.md](docs/TEAM_SYNC.md).
+
+**1. Bootstrap the organization on the server host** — prints the access token once; store it in a secret manager:
+
+```bash
+pip install code-review-graph-ultra
+code-review-graph team token --organization acme --organization-name "Acme Inc." --name bootstrap
+code-review-graph team serve --host 127.0.0.1 --port 8766
+```
+
+**2. Enroll each developer checkout:**
+
+```bash
+pip install code-review-graph-ultra
+code-review-graph install                                        # graph + agent hooks + zero-touch git hooks
+code-review-graph team init --server https://team.acme.dev --token <token>
+code-review-graph team status                                    # verify connection + outbox
+```
+
+From here capture is automatic: commits, merges, pushes, and working-tree checkpoints publish on their own. In CI, set `CRG_TEAM_SERVER`, `CRG_TEAM_TOKEN`, and `CRG_TEAM_REPOSITORY` instead of running `init` — enrollment is picked up from the environment without writing the token to disk.
+
+**3. Deploy the central server.** The server speaks plaintext HTTP and stores everything in one SQLite file, so every option below is the same recipe: run the process on a machine with a persistent disk, and put TLS in front of it before leaving localhost.
+
+<details>
+<summary><strong>Local machine / on-prem (simplest)</strong></summary>
+
+```bash
+code-review-graph team serve --db ~/.code-review-graph/team-server.db
+```
+
+Fine as-is for a single machine or a trusted LAN trial. For anything shared, add one of the TLS fronts below.
+</details>
+
+<details>
+<summary><strong>AWS (EC2)</strong></summary>
+
+A `t4g.micro` is plenty. Note: **RDS is not used or needed** — storage is a single local SQLite file on the instance's EBS volume; do not place it on EFS/NFS.
+
+```bash
+# on the instance
+pipx install code-review-graph-ultra
+sudo tee /etc/systemd/system/crg-team.service > /dev/null <<'EOF'
+[Unit]
+Description=code-review-graph team sync API
+After=network.target
+[Service]
+User=crg
+ExecStart=/home/crg/.local/bin/code-review-graph team serve --db /var/lib/crg/team-server.db
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl enable --now crg-team
+
+# TLS: Caddy proxies 443 -> 8766 with automatic Let's Encrypt certificates
+sudo tee /etc/caddy/Caddyfile > /dev/null <<'EOF'
+team.acme.dev {
+    reverse_proxy 127.0.0.1:8766
+}
+EOF
+```
+
+Open only 443 in the security group; keep 8766 loopback-only. Snapshot the EBS volume (or `sqlite3 .backup`) for backups.
+</details>
+
+<details>
+<summary><strong>Cloudflare Tunnel (no open ports, works in front of any machine)</strong></summary>
+
+Cloudflare Workers can't host the server (it is a long-lived Python process with a local SQLite file), but a Tunnel gives any box — including a laptop or the EC2/GCE VMs above — a public HTTPS URL with zero inbound ports:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create crg-team
+cloudflared tunnel route dns crg-team team.acme.dev
+cloudflared tunnel run --url http://127.0.0.1:8766 crg-team
+```
+
+Developers then use `--server https://team.acme.dev`. Add Cloudflare Access in front for SSO-gated network entry on top of the bearer tokens.
+</details>
+
+<details>
+<summary><strong>Google Cloud (Compute Engine)</strong></summary>
+
+Same systemd + Caddy recipe as EC2 on an `e2-micro` VM with a persistent disk. Cloud Run is not a fit out of the box — its filesystem is ephemeral, so the SQLite database would be lost on every revision; if you must use it, mount a persistent volume and pin concurrency to a single instance.
+</details>
+
+Before a company-wide rollout, read the [operational acceptance checklist](docs/TEAM_SYNC_VALIDATION.md) — HTTPS in front, tokens in a secret manager with named-token rotation, SQLite-safe backups, and monitoring.
 
 
 ## How It Works
@@ -534,13 +624,13 @@ Note: in git repos, only tracked files are indexed (`git ls-files`), so gitignor
 Optional dependency groups:
 
 ```bash
-pip install "code-review-graph[embeddings]"          # Local vector embeddings (sentence-transformers)
-pip install "code-review-graph[google-embeddings]"   # Google Gemini embeddings
-pip install "code-review-graph[communities]"         # Community detection (igraph)
-pip install "code-review-graph[enrichment]"          # Python call-resolution enrichment (Jedi)
-pip install "code-review-graph[eval]"                # Evaluation benchmarks (matplotlib)
-pip install "code-review-graph[wiki]"                # Wiki generation with LLM summaries (ollama)
-pip install "code-review-graph[all]"                 # All optional dependencies
+pip install "code-review-graph-ultra[embeddings]"          # Local vector embeddings (sentence-transformers)
+pip install "code-review-graph-ultra[google-embeddings]"   # Google Gemini embeddings
+pip install "code-review-graph-ultra[communities]"         # Community detection (igraph)
+pip install "code-review-graph-ultra[enrichment]"          # Python call-resolution enrichment (Jedi)
+pip install "code-review-graph-ultra[eval]"                # Evaluation benchmarks (matplotlib)
+pip install "code-review-graph-ultra[wiki]"                # Wiki generation with LLM summaries (ollama)
+pip install "code-review-graph-ultra[all]"                 # All optional dependencies
 ```
 
 ### Environment Variables
@@ -713,6 +803,6 @@ MIT. See [LICENSE](LICENSE).
 <p align="center">
 <br>
 <a href="https://code-review-graph.com">code-review-graph.com</a><br><br>
-<code>pip install code-review-graph && code-review-graph install</code><br>
+<code>pip install code-review-graph-ultra && code-review-graph install</code><br>
 <sub>Works with Codex, Claude Code, CodeBuddy Code, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Qwen, Qoder, Kiro, GitHub Copilot, and GitHub Copilot CLI</sub>
 </p>

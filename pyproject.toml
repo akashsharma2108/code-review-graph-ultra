@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "code-review-graph-ultra"
-version = "2.3.7"
+version = "2.3.7.post1"
 description = "Local-first knowledge graph for token-efficient code review through MCP and CLI"
 readme = {file = "README.md", content-type = "text/markdown"}
 license = "MIT"
@@ -46,8 +46,8 @@ Homepage = "https://github.com/akashsharma2108/code-review-graph-ultra"
 Repository = "https://github.com/akashsharma2108/code-review-graph-ultra"
 Documentation = "https://github.com/akashsharma2108/code-review-graph-ultra/blob/main/docs/INDEX.md"
 Upstream = "https://github.com/tirth8205/code-review-graph"
-Changelog = "https://github.com/tirth8205/code-review-graph/blob/main/CHANGELOG.md"
-Issues = "https://github.com/tirth8205/code-review-graph/issues"
+Changelog = "https://github.com/akashsharma2108/code-review-graph-ultra/blob/main/CHANGELOG.md"
+Issues = "https://github.com/akashsharma2108/code-review-graph-ultra/issues"
 
 [project.scripts]
 code-review-graph = "code_review_graph.cli:main"
@@ -72,11 +72,11 @@ wiki = [
     "ollama>=0.1.0",
 ]
 all = [
-    "code-review-graph[embeddings]",
-    "code-review-graph[communities]",
-    "code-review-graph[enrichment]",
-    "code-review-graph[eval]",
-    "code-review-graph[wiki]",
+    "code-review-graph-ultra[embeddings]",
+    "code-review-graph-ultra[communities]",
+    "code-review-graph-ultra[enrichment]",
+    "code-review-graph-ultra[eval]",
+    "code-review-graph-ultra[wiki]",
 ]
 enrichment = [
     "jedi>=0.19.2",

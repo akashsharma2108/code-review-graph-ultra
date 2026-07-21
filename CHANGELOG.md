@@ -1,6 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## [2.3.7.post1] - 2026-07-21
+
+Documentation-only post release for the `code-review-graph-ultra` fork.
+
+### Changed
+
+- Identified the fork and its differences from upstream in the English and all
+  translated READMEs, and pointed badges and package URLs at this repository.
+- Added company setup commands for Team Sync and central-server deployment
+  guides (local, AWS EC2, Cloudflare Tunnel, Google Compute Engine).
+- Fixed the `all` extra to reference the `code-review-graph-ultra`
+  distribution.
+
+## [2.3.7 (ultra)] - 2026-07-21
+
+First release published to PyPI as `code-review-graph-ultra`. Everything below
+is additive on top of upstream v2.3.7.
 
 ### Added
 
