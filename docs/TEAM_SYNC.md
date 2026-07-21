@@ -190,6 +190,12 @@ tested lifecycle matrix, rollout checklist, and explicit production boundaries.
 
 ## 3. Publish work
 
+`code-review-graph install` ships a **team-sync skill** into each configured agent
+platform (`.claude/skills/team-sync/`, Gemini, CodeBuddy, Qoder, and the bundled
+`skills/` directory) that teaches the agent both directions of this workflow:
+query capsule history before touching unfamiliar code, and publish intent,
+decisions, and open questions when handing work off.
+
 Agents can call `publish_work_capsule_tool` directly. The equivalent CLI commands are:
 
 ```bash

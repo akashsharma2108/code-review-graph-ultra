@@ -116,7 +116,7 @@ class TestGenerateSkills:
         assert result.is_dir()
         assert result == tmp_path / ".claude" / "skills"
 
-    def test_creates_four_skill_subdirs(self, tmp_path):
+    def test_creates_skill_subdirs(self, tmp_path):
         skills_dir = generate_skills(tmp_path)
         subdirs = sorted(f.name for f in skills_dir.iterdir() if f.is_dir())
         assert subdirs == [
@@ -124,6 +124,7 @@ class TestGenerateSkills:
             "explore-codebase",
             "refactor-safely",
             "review-changes",
+            "team-sync",
         ]
         for d in skills_dir.iterdir():
             assert (d / "SKILL.md").is_file()
@@ -152,6 +153,7 @@ class TestGenerateSkills:
             "explore-codebase",
             "refactor-safely",
             "review-changes",
+            "team-sync",
         ):
             for skill_file in (
                 generated / skill_name / "SKILL.md",
@@ -165,32 +167,49 @@ class TestGenerateSkills:
         result = generate_skills(tmp_path, skills_dir=custom)
         assert result == custom
         assert result.is_dir()
-        assert len(list(result.iterdir())) == 4
+        assert len(list(result.iterdir())) == 5
 
-    def test_skill_content_includes_get_minimal_context(self, tmp_path):
-        """Every skill template must reference get_minimal_context."""
+    # The team-sync skill teaches the team tools rather than the graph-query
+    # workflow, so the token-efficiency markers below don't apply to it.
+    GRAPH_SKILLS = ("debug-issue", "explore-codebase", "refactor-safely", "review-changes")
+
+    def test_graph_skill_content_includes_get_minimal_context(self, tmp_path):
+        """Every graph skill template must reference get_minimal_context."""
         skills_dir = generate_skills(tmp_path)
-        for subdir in skills_dir.iterdir():
-            content = (subdir / "SKILL.md").read_text()
+        for name in self.GRAPH_SKILLS:
+            content = (skills_dir / name / "SKILL.md").read_text()
             assert "get_minimal_context" in content, (
-                f"{subdir.name} missing get_minimal_context reference"
+                f"{name} missing get_minimal_context reference"
             )
 
-    def test_skill_content_includes_detail_level(self, tmp_path):
-        """Every skill template must reference detail_level."""
+    def test_graph_skill_content_includes_detail_level(self, tmp_path):
+        """Every graph skill template must reference detail_level."""
         skills_dir = generate_skills(tmp_path)
-        for subdir in skills_dir.iterdir():
-            content = (subdir / "SKILL.md").read_text()
+        for name in self.GRAPH_SKILLS:
+            content = (skills_dir / name / "SKILL.md").read_text()
             assert "detail_level" in content, (
-                f"{subdir.name} missing detail_level reference"
+                f"{name} missing detail_level reference"
             )
+
+    def test_team_skill_teaches_publish_and_query_tools(self, tmp_path):
+        """The team-sync skill must cover both handoff and consumption."""
+        skills_dir = generate_skills(tmp_path)
+        content = (skills_dir / "team-sync" / "SKILL.md").read_text()
+        for marker in (
+            "publish_work_capsule_tool",
+            "get_symbol_history_tool",
+            "get_team_context_tool",
+            "sync_team_context_tool",
+            "team_sync_status_tool",
+        ):
+            assert marker in content, f"team-sync missing {marker} reference"
 
     def test_idempotent(self, tmp_path):
         """Running twice should not fail and files should still be valid."""
         generate_skills(tmp_path)
         generate_skills(tmp_path)
         skills_dir = tmp_path / ".claude" / "skills"
-        assert len(list(skills_dir.iterdir())) == 4
+        assert len(list(skills_dir.iterdir())) == 5
 
 
 class TestGenerateHooksConfig:
@@ -918,13 +937,16 @@ class TestCodeBuddyPlatform:
             "explore-codebase",
             "refactor-safely",
             "review-changes",
+            "team-sync",
         }
         for skill_dir in skills_root.iterdir():
             content = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
             assert content.startswith("---\n")
             assert f"name: {skill_dir.name}\n" in content
             assert "description:" in content
-            assert "get_minimal_context" in content
+            # Graph skills teach the minimal-context workflow; the team skill
+            # teaches the team-sync tools instead.
+            assert "get_minimal_context" in content or "team_sync_status_tool" in content
 
     def test_project_hooks_preserve_user_settings_and_resolve_repo_at_runtime(
         self, tmp_path
