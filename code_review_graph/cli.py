@@ -78,12 +78,13 @@ def _get_version() -> str:
     on filesystems where iCloud / OneDrive can leave orphan dist-info dirs
     behind that confuse importlib.metadata's lookup.
     """
-    try:
-        v = pkg_version("code-review-graph")
-        if v:
-            return v
-    except PackageNotFoundError as exc:
-        logger.debug("Package metadata unavailable: %s", exc)
+    for distribution in ("code-review-graph-ultra", "code-review-graph"):
+        try:
+            v = pkg_version(distribution)
+            if v:
+                return v
+        except PackageNotFoundError as exc:
+            logger.debug("Package metadata unavailable: %s", exc)
     # Fallback: read __version__ directly from the package.
     try:
         from . import __version__ as fallback_version

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -341,6 +341,46 @@ wheels = [
 [[package]]
 name = "code-review-graph"
 version = "2.3.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "mcp" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pyyaml" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-language-pack" },
+    { name = "watchdog" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/02/b3/e202da5d2bc15975cb94153f071474be9d35121b76475c87ade7381a392a/code_review_graph-2.3.7.tar.gz", hash = "sha256:5a44440fd87607761b2fb06341aaab48ad1767c14b3eb98aa7ee2e357da867b8", size = 455605, upload-time = "2026-07-18T00:34:12.608Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/8f/2df3fcca285b489d195706b09cefda3e57e7158185cb83905200d7b27199/code_review_graph-2.3.7-py3-none-any.whl", hash = "sha256:12196dce3e673bdec7fba97ae5c4dff7589adee73a721374f62efae76e0fdd88", size = 426655, upload-time = "2026-07-18T00:34:11.05Z" },
+]
+
+[package.optional-dependencies]
+communities = [
+    { name = "igraph" },
+]
+embeddings = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "sentence-transformers" },
+]
+enrichment = [
+    { name = "jedi" },
+]
+eval = [
+    { name = "matplotlib" },
+    { name = "pyyaml" },
+]
+wiki = [
+    { name = "ollama" },
+]
+
+[[package]]
+name = "code-review-graph-ultra"
+version = "2.3.7"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -356,14 +396,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "igraph" },
-    { name = "jedi" },
-    { name = "matplotlib" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "ollama" },
-    { name = "pyyaml" },
-    { name = "sentence-transformers" },
+    { name = "code-review-graph", extra = ["communities", "embeddings", "enrichment", "eval", "wiki"] },
 ]
 communities = [
     { name = "igraph" },
