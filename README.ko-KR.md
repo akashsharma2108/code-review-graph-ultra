@@ -1,4 +1,6 @@
-<h1 align="center">code-review-graph</h1>
+<h1 align="center">code-review-graph-ultra</h1>
+
+> **이것은 `code-review-graph-ultra`** — [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph)의 포크로, **Team Sync**를 추가했습니다: AI 코딩 에이전트를 위한 팀 컨텍스트 공유(워크 캡슐, 셀프 호스팅 서비스, 8개의 새 MCP 도구, 제로터치 git 훅 자동 캡처). 소스 코드는 개발자 머신을 떠나지 않으며 그래프 참조와 메타데이터만 공유됩니다. PyPI 패키지 이름은 [`code-review-graph-ultra`](https://pypi.org/project/code-review-graph-ultra/)이지만 CLI와 Python 패키지는 업스트림 이름을 유지하므로 그대로 교체하여 사용할 수 있습니다. 자세한 내용은 [영문 README](README.md)와 [docs/TEAM_SYNC.md](docs/TEAM_SYNC.md)를 참조하세요.
 
 > **참고:** 이 번역은 이전 릴리스를 기준으로 합니다. 벤치마크 수치와 플랫폼 목록은 [영문 README](README.md)보다 오래되었을 수 있습니다.
 

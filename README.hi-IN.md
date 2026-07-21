@@ -1,4 +1,6 @@
-<h1 align="center">code-review-graph</h1>
+<h1 align="center">code-review-graph-ultra</h1>
+
+> **यह `code-review-graph-ultra` है** — [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph) का फोर्क, जिसमें **Team Sync** जोड़ा गया है: AI कोडिंग एजेंट्स के लिए टीम-व्यापी कॉन्टेक्स्ट साझाकरण (वर्क कैप्सूल, सेल्फ-होस्टेड सर्विस, 8 नए MCP टूल, ज़ीरो-टच git हुक कैप्चर)। सोर्स कोड डेवलपर की मशीन से बाहर नहीं जाता; केवल ग्राफ़ संदर्भ और मेटाडेटा साझा होते हैं। PyPI पैकेज का नाम [`code-review-graph-ultra`](https://pypi.org/project/code-review-graph-ultra/) है, लेकिन CLI और Python पैकेज अपस्ट्रीम नाम ही रखते हैं, इसलिए यह सीधा प्रतिस्थापन है। विवरण के लिए [अंग्रेज़ी README](README.md) और [docs/TEAM_SYNC.md](docs/TEAM_SYNC.md) देखें।
 
 > **नोट:** यह अनुवाद एक पुराने रिलीज़ पर आधारित है; बेंचमार्क आंकड़े और प्लेटफ़ॉर्म सूचियाँ [अंग्रेज़ी README](README.md) से पीछे हो सकती हैं।
 

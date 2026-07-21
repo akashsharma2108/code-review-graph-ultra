@@ -1,4 +1,6 @@
-<h1 align="center">code-review-graph</h1>
+<h1 align="center">code-review-graph-ultra</h1>
+
+> **这是 `code-review-graph-ultra`** —— [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph) 的分支（fork），新增 **Team Sync**：面向 AI 编码代理的多人上下文共享（工作胶囊、自托管服务、8 个新 MCP 工具、零接触 git 钩子捕获）。源代码不会离开开发者机器，仅共享图引用和元数据。PyPI 包名为 [`code-review-graph-ultra`](https://pypi.org/project/code-review-graph-ultra/)，CLI 和 Python 包保持上游名称，可直接替换。详见[英文 README](README.md) 与 [docs/TEAM_SYNC.md](docs/TEAM_SYNC.md)。
 
 > **注意：** 本翻译对应较早的版本；基准测试数据和平台列表可能落后于[英文 README](README.md)。
 

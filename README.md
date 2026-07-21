@@ -6,6 +6,17 @@
   <strong>Stop burning tokens. Start reviewing smarter.</strong>
 </p>
 
+> [!NOTE]
+> **This is `code-review-graph-ultra`** — a fork of [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph) that adds **Team Sync**: multi-developer context sharing for AI coding agents.
+>
+> **What's different from upstream:**
+> - **Team Sync** (`team` CLI command group + 8 MCP tools) — commits and work-in-progress become portable "work capsules" (provenance, changed symbols, graph impact, decisions, open questions) shared through a self-hosted, organization-scoped service. A teammate's agent can answer *"who changed this symbol, and why?"* without re-reading the diff. Source code never leaves the developer's machine; only graph references and metadata are shared. See [docs/TEAM_SYNC.md](docs/TEAM_SYNC.md).
+> - **Zero-touch capture** — installed git hooks and agent lifecycle hooks checkpoint uncommitted work and publish commits automatically, backed by a durable offline outbox with retry and dead-letter handling.
+> - **Hardened team server** — concurrent request handling, per-connection timeouts, literal (`%`/`_`-safe) search filters, and deduplicated checkpoints.
+> - **Drop-in replacement** — published on PyPI as [`code-review-graph-ultra`](https://pypi.org/project/code-review-graph-ultra/), while the Python package, the `code-review-graph` CLI, and data directories keep their upstream names.
+>
+> Everything else — the local-first knowledge graph, MCP tools, and CLI — follows upstream.
+
 <p align="center">
   <a href="README.md">English</a> |
   <a href="README.zh-CN.md">简体中文</a> |
@@ -15,11 +26,11 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/code-review-graph/"><img src="https://img.shields.io/pypi/v/code-review-graph?style=flat-square&color=blue" alt="PyPI"></a>
-  <a href="https://pepy.tech/project/code-review-graph"><img src="https://img.shields.io/pepy/dt/code-review-graph?style=flat-square" alt="Downloads"></a>
-  <a href="https://github.com/tirth8205/code-review-graph/stargazers"><img src="https://img.shields.io/github/stars/tirth8205/code-review-graph?style=flat-square" alt="Stars"></a>
+  <a href="https://pypi.org/project/code-review-graph-ultra/"><img src="https://img.shields.io/pypi/v/code-review-graph-ultra?style=flat-square&color=blue" alt="PyPI"></a>
+  <a href="https://pepy.tech/project/code-review-graph-ultra"><img src="https://img.shields.io/pepy/dt/code-review-graph-ultra?style=flat-square" alt="Downloads"></a>
+  <a href="https://github.com/akashsharma2108/code-review-graph-ultra/stargazers"><img src="https://img.shields.io/github/stars/akashsharma2108/code-review-graph-ultra?style=flat-square" alt="Stars"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT Licence"></a>
-  <a href="https://github.com/tirth8205/code-review-graph/actions/workflows/ci.yml"><img src="https://github.com/tirth8205/code-review-graph/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/akashsharma2108/code-review-graph-ultra/actions/workflows/ci.yml"><img src="https://github.com/akashsharma2108/code-review-graph-ultra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?style=flat-square" alt="Python 3.10+"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-compatible-green.svg?style=flat-square" alt="MCP"></a>
   <a href="https://code-review-graph.com"><img src="https://img.shields.io/badge/website-code--review--graph.com-blue?style=flat-square" alt="Website"></a>
