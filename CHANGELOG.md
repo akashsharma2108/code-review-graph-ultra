@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.9] - 2026-07-22
+
+### Changed
+
+- The build-graph and explore-codebase skills now teach agents to call
+  `embed_graph_tool()` after large graph updates in repositories that use
+  embeddings, keeping semantic search current at the cost of only the stale
+  nodes.
+
 ## [2.3.8] - 2026-07-21
 
 ### Added
