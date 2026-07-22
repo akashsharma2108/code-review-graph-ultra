@@ -588,7 +588,10 @@ _SKILLS: dict[str, dict[str, str]] = {
             "### Tips\n\n"
             "- Start broad (stats, architecture) then narrow down to specific areas.\n"
             "- Use `children_of` on a file to see all its functions and classes.\n"
-            "- Use `find_large_functions` to identify complex code.\n\n"
+            "- Use `find_large_functions` to identify complex code.\n"
+            "- If `semantic_search_nodes_tool` falls back to keyword mode in a repo "
+            "that uses embeddings, run `embed_graph_tool()` to embed nodes added or "
+            "changed since the last embed — it only processes stale nodes.\n\n"
             "## Token Efficiency Rules\n"
             '- ALWAYS start with `get_minimal_context(task="<your task>")` '
             "before any other graph tool.\n"

@@ -24,6 +24,12 @@ Build or incrementally update the persistent code knowledge graph for this repos
    - Languages detected
    - Any errors encountered
 
+4. **Refresh embeddings (only if this repo uses them)** — if the stats show
+   existing embeddings, call `embed_graph_tool()` after a large update so new
+   and changed nodes stay semantically searchable. It embeds only stale nodes,
+   so it is cheap when little changed. Skip this if embeddings were never set
+   up (they require the `embeddings` extra); keyword search still works.
+
 ## When to Use
 
 - First time setting up the graph for a repository
